@@ -254,10 +254,16 @@ function initMultiplayer() {
                         
                         // Aggiorna barra HP a piena
                         updateEnemyHealthBar(otherPlayers[data.id], data.hp || 100);
+                        
+                        // Forza visibilità mesh principale e tutti i figli
+                        otherPlayers[data.id].mesh.traverse((child) => {
+                            child.visible = true;
+                        });
+                        
                         console.log(`[CLIENT] Player ${data.id} respawnato - visibile e HP resettati`);
                     } else {
-                        // Se il player non esiste, richiedilo al server
-                        console.log(`[CLIENT] Player ${data.id} respawnato ma non trovato - richiedo dati`);
+                        // Se il player non esiste, richiedilo al server (importante per respawn ritardati)
+                        console.log(`[CLIENT] Player ${data.id} respawnato ma non trovato - richiedo dati completi`);
                         socket.emit('requestPosition');
                     }
                 });
@@ -269,12 +275,14 @@ function initMultiplayer() {
                         document.getElementById('message').style.display = "block"; document.exitPointerLock(); 
                         spawnParticles(playerMesh.position, 0xff0000, 50, 50, 1.0, true);
                         playerMesh.visible = false;
+                        console.log('[CLIENT] Io sono morto - mesh nascosto immediatamente');
                     } else if(otherPlayers[data.id]) { 
                         otherPlayers[data.id].mesh.userData.isDead = true;
-                        otherPlayers[data.id].mesh.visible = false; // Nascondi invece di rimuovere
+                        otherPlayers[data.id].mesh.visible = false; // Nascondi immediatamente il corpo
                         addToLog(otherPlayers[data.id].username + " eliminato!", "kill"); 
                         spawnParticles(otherPlayers[data.id].mesh.position, 0xff0000, 50, 50, 1.0, true);
-                        // Non rimuovere il giocatore - sar\u00e0 rimostrato quando respawna
+                        console.log(`[CLIENT] Player ${data.id} morto - mesh nascosto immediatamente per tutti`);
+                        // Non rimuovere il giocatore - sarà rimostrato quando respawna
                     }
                     
                     // Incrementa kill counter per il killer

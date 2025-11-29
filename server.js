@@ -207,7 +207,13 @@ io.on('connection', (socket) => {
 
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {
                 players[targetId].isDead = true;
-                io.emit('playerDied', { id: targetId, killerId: socket.id }); // Sent to ALL players
+                console.log(`[SERVER] Player ${targetId} morto (PUSH) - broadcasting a tutti`);
+                // Broadcast morte a TUTTI i client immediatamente
+                io.emit('playerDied', { 
+                    id: targetId, 
+                    killerId: socket.id,
+                    position: players[targetId].position
+                });
             }
         }
     });
@@ -252,7 +258,13 @@ io.on('connection', (socket) => {
             
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {
                 players[targetId].isDead = true;
-                io.emit('playerDied', { id: targetId, killerId: socket.id }); // Sent to ALL players
+                console.log(`[SERVER] Player ${targetId} morto (HIT) - broadcasting a tutti`);
+                // Broadcast morte a TUTTI i client immediatamente
+                io.emit('playerDied', { 
+                    id: targetId, 
+                    killerId: socket.id,
+                    position: players[targetId].position
+                });
             }
         }
     });
@@ -278,19 +290,33 @@ io.on('connection', (socket) => {
                 players[socket.id].rotation = data.rotation;
             }
             
-            console.log(`[RESPAWN] ${socket.id} respawnato con ${players[socket.id].hp} HP`);
+            console.log(`[RESPAWN] ${socket.id} respawnato con ${players[socket.id].hp} HP - broadcasting completo`);
             
             // Notifica tutti i client dello stato aggiornato con dati completi
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
+            
+            // Emit multipli per garantire sincronizzazione
             io.emit('playerRespawned', { 
                 id: socket.id,
                 hp: players[socket.id].hp,
                 position: players[socket.id].position,
-                rotation: players[socket.id].rotation
+                rotation: players[socket.id].rotation,
+                timestamp: Date.now() // Timestamp per debug
             });
             
-            // Broadcast newPlayer per assicurare visibilità
+            // Broadcast newPlayer per assicurare visibilità (importante per respawn ritardati)
             socket.broadcast.emit('newPlayer', players[socket.id]);
+            
+            // Doppio check: forza aggiornamento posizione
+            setTimeout(() => {
+                if (players[socket.id] && !players[socket.id].isDead) {
+                    socket.broadcast.emit('updatePosition', {
+                        id: socket.id,
+                        position: players[socket.id].position,
+                        rotation: players[socket.id].rotation
+                    });
+                }
+            }, 100);
         }
     });
 
