@@ -158,7 +158,9 @@ function performWhirlwind() {
             Object.values(otherPlayers).forEach((e) => {
                 if (e.mesh.position.distanceTo(playerMesh.position) < SETTINGS.whirlwindRadius) {
                     let dmg = SETTINGS.whirlwindDmg;
-                    if(e.mesh.userData.isBlocking) {
+                    // Controlla se il nemico sta bloccando
+                    const isBlocking = e.mesh.userData.isBlocking || false;
+                    if(isBlocking) {
                         dmg *= (1.0 - SETTINGS.blockMitigation); 
                         createFloatingText(e.mesh.position.clone().add(new THREE.Vector3(0,10,0)), "BLOCK", "#aaa");
                     } else {
@@ -497,7 +499,9 @@ function swingSword() {
                 const dir = new THREE.Vector3().subVectors(p.mesh.position, origin);
                 if (dir.length() < SETTINGS.meleeRange && forward.angleTo(dir.normalize()) < Math.PI/2) {
                     let dmg = SETTINGS.meleeDmg;
-                    if(p.mesh.userData.isBlocking) {
+                    // Controlla se il nemico sta bloccando
+                    const isBlocking = p.mesh.userData.isBlocking || false;
+                    if(isBlocking) {
                         dmg *= (1.0 - SETTINGS.blockMitigation); 
                         createFloatingText(p.mesh.position.clone().add(new THREE.Vector3(0,10,0)), "BLOCK", "#aaa");
                     } else {

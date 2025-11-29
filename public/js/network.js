@@ -378,7 +378,7 @@ function createPlayerLabel(name) {
             const group = new THREE.Group();
             const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); canvas.width = 256; canvas.height = 64;
             ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,256,64); ctx.font = "bold 32px Arial"; ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(name, 128, 32);
-            const tex = new THREE.CanvasTexture(canvas); const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })); sprite.scale.set(6, 1.5, 1); group.add(sprite);
+            const tex = new THREE.CanvasTexture(canvas); const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })); sprite.scale.set(10, 2.5, 1); group.add(sprite);
             const bg = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0x330000 })); bg.position.y = 1.2; group.add(bg);
             const fg = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0x00ff00 })); fg.position.y = 1.2; fg.position.z = 0.01; fg.geometry.translate(2.5, 0, 0); fg.position.x = -2.5; group.add(fg);
             group.userData.hpBar = fg; return group;
