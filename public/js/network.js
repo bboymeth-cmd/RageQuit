@@ -94,14 +94,21 @@ function initMultiplayer() {
                 });
                 socket.on('newPlayer', (playerInfo) => { 
                     console.log('TRACE: newPlayer received id=', playerInfo && playerInfo.id, 'username=', playerInfo && playerInfo.username, 'myId=', myId);
-                    addToLog(playerInfo.username + " è entrato!", "heal"); 
-                    // Defensive: ignore if server accidentally broadcasts the joining player's own data
-                    if (playerInfo.id === myId || playerInfo.id === socket.id) return;
+                    
+                    // CRITICAL: NEVER create your own player in otherPlayers
+                    if (playerInfo.id === myId || playerInfo.id === socket.id) {
+                        console.log('TRACE: BLOCKED newPlayer for self', playerInfo.id);
+                        return;
+                    }
+                    
                     // Skip if recently removed (dedupe window)
                     if (recentlyRemoved[playerInfo.id]) {
                         console.log('TRACE: skipping newPlayer for', playerInfo.id, '(recently removed)');
                         return;
                     }
+                    
+                    addToLog(playerInfo.username + " è entrato!", "heal"); 
+                    
                     if (!otherPlayers[playerInfo.id]) {
                         addOtherPlayer(playerInfo);
                     } else {
@@ -239,6 +246,12 @@ function initMultiplayer() {
                 });
                 
                 socket.on('playerRespawned', (data) => {
+                    // CRITICAL: Ignora se è il nostro player (gestiamo respawn localmente)
+                    if (data.id === myId || data.id === socket.id) {
+                        console.log('[CLIENT] Ignorato playerRespawned per me stesso');
+                        return;
+                    }
+                    
                     if (otherPlayers[data.id]) {
                         // Reset completo stato del player respawnato
                         otherPlayers[data.id].mesh.userData.isDead = false;
@@ -303,11 +316,19 @@ function initMultiplayer() {
                 socket.on('playerDied', (data) => { 
                     if (data.id === myId) { 
                         playerStats.isDead = true; playerStats.hp = 0; 
-                        document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Premi RESPAWN</span>"; 
+                        document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Respawn in 3 secondi...</span>"; 
                         document.getElementById('message').style.display = "block"; document.exitPointerLock(); 
                         spawnParticles(playerMesh.position, 0xff0000, 50, 50, 1.0, true);
                         playerMesh.visible = false;
-                        console.log('[CLIENT] Io sono morto - mesh nascosto immediatamente');
+                        console.log('[CLIENT] Io sono morto - respawn automatico in 3 secondi');
+                        
+                        // RESPAWN AUTOMATICO dopo 3 secondi
+                        setTimeout(() => {
+                            if (playerStats.isDead) { // Controlla se è ancora morto
+                                console.log('[CLIENT] Auto-respawn attivato');
+                                respawnPlayer();
+                            }
+                        }, 3000);
                     } else if(otherPlayers[data.id]) { 
                         otherPlayers[data.id].mesh.userData.isDead = true;
                         otherPlayers[data.id].mesh.visible = false; // Nascondi immediatamente il corpo
@@ -332,6 +353,13 @@ function initMultiplayer() {
 
 function addOtherPlayer(info) {
             if (!info || !info.id) return;
+            
+            // CRITICAL: NEVER add yourself to otherPlayers
+            if (info.id === myId || info.id === socket.id) {
+                console.error('[BLOCKED] Tentativo di creare copia di me stesso in otherPlayers!', info.id);
+                return;
+            }
+            
             // Skip if recently removed (within dedupe window) to prevent duplicate adds
             if (recentlyRemoved[info.id]) {
                 console.log('TRACE: skipping addOtherPlayer for', info.id, '(recently removed)');
@@ -339,6 +367,7 @@ function addOtherPlayer(info) {
             }
             // If an entry already exists for this id, remove it first to prevent duplicates
             if (otherPlayers[info.id]) {
+                console.warn('[WARN] Player', info.id, 'già esistente in otherPlayers - rimuovo vecchio mesh');
                 removeOtherPlayer(info.id);
             }
             const mesh = new THREE.Group();
