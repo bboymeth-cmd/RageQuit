@@ -780,14 +780,21 @@ let socket = null;
             // Mostra il messaggio
             document.getElementById('message').style.display = 'none';
             
-            // Rendi visibile il player
+            // Rendi visibile il player - FORZA VISIBILITÀ
             playerMesh.visible = true;
+            playerMesh.traverse((child) => {
+                child.visible = true;
+            });
+            
+            console.log('[CLIENT] respawnPlayer - playerMesh.visible:', playerMesh.visible, 'isDead:', playerStats.isDead);
             
             // Notifica il server del respawn e richiedi lo stato aggiornato di tutti i player
             if (socket && socket.connected) {
                 socket.emit('playerRespawned', {
                     position: playerMesh.position,
-                    rotation: playerMesh.rotation
+                    rotation: playerMesh.rotation,
+                    hp: playerStats.hp,
+                    isDead: false // ESPLICITA che NON siamo più morti
                 });
                 socket.emit('requestPosition'); // Richiedi posizioni aggiornate
             }
@@ -1170,6 +1177,12 @@ let socket = null;
             }
             
             if (!playerStats.isDead && !isSpectating) { 
+                // SAFETY CHECK: Assicura che playerMesh sia sempre visibile quando vivo
+                if (!playerMesh.visible) {
+                    console.warn('[GAME LOOP] playerMesh invisibile ma player vivo - FIXING');
+                    playerMesh.visible = true;
+                }
+                
                 try {
                     updatePhysics(delta); 
                     updateCamera(); // Moved here to fix lag

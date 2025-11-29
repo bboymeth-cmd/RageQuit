@@ -415,11 +415,21 @@ function addOtherPlayer(info) {
             armL.add(bowGroup); // Held in left hand
 
             mesh.position.set(info.position.x, info.position.y, info.position.z);
-            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar; 
+            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
+            
+            // CRITICAL: Assicura che il mesh sia visibile (importante per respawn)
+            mesh.visible = true;
+            mesh.traverse((child) => {
+                if (!child.userData.isLabel) { // Non modificare label visibility
+                    child.visible = true;
+                }
+            });
+            
             scene.add(mesh);
             otherPlayers[info.id] = { 
                 username: info.username,
                 team: info.team || null,
+                teamColor: info.teamColor || 0x2c3e50,
                 mesh: mesh, 
                 limbs: { 
                     armL, armR, 
@@ -430,9 +440,11 @@ function addOtherPlayer(info) {
                     head: headGroup, torso 
                 }, 
                 weaponMeshes: { staff: staff, sword: swordGroup, shield: shield, bow: bowGroup },
-                isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: false,
+                isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: info.isDead || false,
                 lastStepPos: new THREE.Vector3()
             };
+            
+            console.log(`[CLIENT] addOtherPlayer: ${info.id} - visible: ${mesh.visible}, isDead: ${info.isDead || false}, team: ${info.team}`);
         }
 
 function createPlayerLabel(name) {
