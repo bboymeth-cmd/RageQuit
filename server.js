@@ -264,17 +264,33 @@ io.on('connection', (socket) => {
         }
     });
     
-    socket.on('playerRespawned', () => {
+    socket.on('playerRespawned', (data) => {
         if (players[socket.id]) {
             // Reset completo stato player sul server
             players[socket.id].hp = players[socket.id].maxHp;
             players[socket.id].isDead = false;
             
+            // Aggiorna posizione se fornita
+            if (data && data.position) {
+                players[socket.id].position = data.position;
+            }
+            if (data && data.rotation) {
+                players[socket.id].rotation = data.rotation;
+            }
+            
             console.log(`[RESPAWN] ${socket.id} respawnato con ${players[socket.id].hp} HP`);
             
-            // Notifica tutti i client dello stato aggiornato
+            // Notifica tutti i client dello stato aggiornato con dati completi
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
-            io.emit('playerRespawned', { id: socket.id });
+            io.emit('playerRespawned', { 
+                id: socket.id,
+                hp: players[socket.id].hp,
+                position: players[socket.id].position,
+                rotation: players[socket.id].rotation
+            });
+            
+            // Broadcast newPlayer per assicurare visibilità
+            socket.broadcast.emit('newPlayer', players[socket.id]);
         }
     });
 

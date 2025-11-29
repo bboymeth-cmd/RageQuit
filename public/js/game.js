@@ -785,7 +785,10 @@ let socket = null;
             
             // Notifica il server del respawn e richiedi lo stato aggiornato di tutti i player
             if (socket && socket.connected) {
-                socket.emit('playerRespawned');
+                socket.emit('playerRespawned', {
+                    position: playerMesh.position,
+                    rotation: playerMesh.rotation
+                });
                 socket.emit('requestPosition'); // Richiedi posizioni aggiornate
             }
             

@@ -102,7 +102,15 @@ function initMultiplayer() {
                         console.log('TRACE: skipping newPlayer for', playerInfo.id, '(recently removed)');
                         return;
                     }
-                    if (!otherPlayers[playerInfo.id]) addOtherPlayer(playerInfo); 
+                    if (!otherPlayers[playerInfo.id]) {
+                        addOtherPlayer(playerInfo);
+                    } else {
+                        // Player già esistente - assicura che sia visibile (potrebbe essere stato nascosto alla morte)
+                        otherPlayers[playerInfo.id].mesh.visible = true;
+                        otherPlayers[playerInfo.id].mesh.userData.isDead = false;
+                        updateEnemyHealthBar(otherPlayers[playerInfo.id], playerInfo.hp || 100);
+                        console.log('TRACE: Player', playerInfo.id, 'già esistente - forzata visibilità');
+                    }
                 });
                 socket.on('playerDisconnected', (id) => { if (otherPlayers[id]) addToLog(otherPlayers[id].username + " è uscito.", "kill"); removeOtherPlayer(id); });
                 socket.on('updateUsername', (data) => { if (otherPlayers[data.id]) { otherPlayers[data.id].username = data.username; const oldLabel = otherPlayers[data.id].mesh.children.find(c => c.userData.isLabel); if (oldLabel) otherPlayers[data.id].mesh.remove(oldLabel); const newLabel = createPlayerLabel(data.username); newLabel.position.y = 14; newLabel.userData.isLabel = true; otherPlayers[data.id].mesh.add(newLabel); otherPlayers[data.id].mesh.userData.hpBar = newLabel.userData.hpBar; } });
@@ -235,9 +243,22 @@ function initMultiplayer() {
                         // Reset completo stato del player respawnato
                         otherPlayers[data.id].mesh.userData.isDead = false;
                         otherPlayers[data.id].mesh.visible = true;
+                        
+                        // Aggiorna posizione se fornita
+                        if (data.position) {
+                            otherPlayers[data.id].mesh.position.set(data.position.x, data.position.y, data.position.z);
+                        }
+                        if (data.rotation) {
+                            otherPlayers[data.id].mesh.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
+                        }
+                        
                         // Aggiorna barra HP a piena
-                        updateEnemyHealthBar(otherPlayers[data.id], 100);
-                        console.log(`[CLIENT] Player ${data.id} respawnato - HP bar resettata`);
+                        updateEnemyHealthBar(otherPlayers[data.id], data.hp || 100);
+                        console.log(`[CLIENT] Player ${data.id} respawnato - visibile e HP resettati`);
+                    } else {
+                        // Se il player non esiste, richiedilo al server
+                        console.log(`[CLIENT] Player ${data.id} respawnato ma non trovato - richiedo dati`);
+                        socket.emit('requestPosition');
                     }
                 });
                 
