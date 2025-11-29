@@ -244,6 +244,21 @@ function initMultiplayer() {
                         otherPlayers[data.id].mesh.userData.isDead = false;
                         otherPlayers[data.id].mesh.visible = true;
                         
+                        // CRITICAL: Aggiorna team e teamColor per evitare perdita dati
+                        if (data.team !== undefined) {
+                            otherPlayers[data.id].team = data.team;
+                        }
+                        if (data.teamColor !== undefined) {
+                            otherPlayers[data.id].teamColor = data.teamColor;
+                            // Aggiorna il colore del mesh se necessario
+                            if (otherPlayers[data.id].mesh.material) {
+                                otherPlayers[data.id].mesh.material.color.setHex(data.teamColor);
+                            }
+                        }
+                        if (data.username !== undefined) {
+                            otherPlayers[data.id].username = data.username;
+                        }
+                        
                         // Aggiorna posizione se fornita
                         if (data.position) {
                             otherPlayers[data.id].mesh.position.set(data.position.x, data.position.y, data.position.z);
@@ -260,11 +275,28 @@ function initMultiplayer() {
                             child.visible = true;
                         });
                         
-                        console.log(`[CLIENT] Player ${data.id} respawnato - visibile e HP resettati`);
+                        console.log(`[CLIENT] Player ${data.id} respawnato - team: ${data.team}, visibile: true`);
                     } else {
-                        // Se il player non esiste, richiedilo al server (importante per respawn ritardati)
-                        console.log(`[CLIENT] Player ${data.id} respawnato ma non trovato - richiedo dati completi`);
-                        socket.emit('requestPosition');
+                        // Se il player non esiste, crealo usando i dati del respawn
+                        console.log(`[CLIENT] Player ${data.id} respawnato ma non trovato - creazione con dati completi`);
+                        
+                        // Crea oggetto player completo per addOtherPlayer
+                        const playerInfo = {
+                            id: data.id,
+                            username: data.username || 'Player',
+                            hp: data.hp || 100,
+                            maxHp: data.hp || 100,
+                            position: data.position || { x: 0, y: 6, z: 0 },
+                            rotation: data.rotation || { x: 0, y: 0, z: 0 },
+                            team: data.team,
+                            teamColor: data.teamColor || 0x2c3e50,
+                            animState: 'idle',
+                            weaponMode: 'ranged',
+                            isBlocking: false,
+                            isDead: false
+                        };
+                        
+                        addOtherPlayer(playerInfo);
                     }
                 });
                 

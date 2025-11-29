@@ -290,21 +290,24 @@ io.on('connection', (socket) => {
                 players[socket.id].rotation = data.rotation;
             }
             
-            console.log(`[RESPAWN] ${socket.id} respawnato con ${players[socket.id].hp} HP - broadcasting completo`);
+            console.log(`[RESPAWN] ${socket.id} respawnato - team: ${players[socket.id].team}, teamColor: ${players[socket.id].teamColor}`);
             
             // Notifica tutti i client dello stato aggiornato con dati completi
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
             
-            // Emit multipli per garantire sincronizzazione
+            // Emit multipli per garantire sincronizzazione - INCLUDE TEAM E TEAMCOLOR
             io.emit('playerRespawned', { 
                 id: socket.id,
                 hp: players[socket.id].hp,
                 position: players[socket.id].position,
                 rotation: players[socket.id].rotation,
+                team: players[socket.id].team,
+                teamColor: players[socket.id].teamColor,
+                username: players[socket.id].username,
                 timestamp: Date.now() // Timestamp per debug
             });
             
-            // Broadcast newPlayer per assicurare visibilità (importante per respawn ritardati)
+            // Broadcast newPlayer COMPLETO per assicurare visibilità (importante per respawn ritardati)
             socket.broadcast.emit('newPlayer', players[socket.id]);
             
             // Doppio check: forza aggiornamento posizione
