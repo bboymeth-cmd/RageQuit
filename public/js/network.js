@@ -230,6 +230,17 @@ function initMultiplayer() {
                     } 
                 });
                 
+                socket.on('playerRespawned', (data) => {
+                    if (otherPlayers[data.id]) {
+                        // Reset completo stato del player respawnato
+                        otherPlayers[data.id].mesh.userData.isDead = false;
+                        otherPlayers[data.id].mesh.visible = true;
+                        // Aggiorna barra HP a piena
+                        updateEnemyHealthBar(otherPlayers[data.id], 100);
+                        console.log(`[CLIENT] Player ${data.id} respawnato - HP bar resettata`);
+                    }
+                });
+                
                 socket.on('playerDied', (data) => { 
                     if (data.id === myId) { 
                         playerStats.isDead = true; playerStats.hp = 0; 

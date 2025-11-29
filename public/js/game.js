@@ -783,6 +783,12 @@ let socket = null;
             // Rendi visibile il player
             playerMesh.visible = true;
             
+            // Notifica il server del respawn e richiedi lo stato aggiornato di tutti i player
+            if (socket && socket.connected) {
+                socket.emit('playerRespawned');
+                socket.emit('requestPosition'); // Richiedi posizioni aggiornate
+            }
+            
             // Aggiorna l'UI
             updateUI();
             

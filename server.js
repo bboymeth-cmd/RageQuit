@@ -215,6 +215,13 @@ io.on('connection', (socket) => {
     socket.on('playerHit', (dmgData) => {
         const targetId = dmgData.targetId;
         
+        // Verifica che il target esista e non sia già morto
+        if (!players[targetId] || players[targetId].isDead || players[targetId].hp <= 0) {
+            console.log(`[HIT REJECTED] ${socket.id} -> ${targetId} (target morto o inesistente)`);
+            socket.emit('hitRejected', { targetId: targetId });
+            return;
+        }
+        
         // VALIDAZIONE SERVER-SIDE DELL'HIT
         if (!validateHit(socket.id, targetId, dmgData.hitPosition || players[targetId]?.position)) {
             console.log(`[HIT REJECTED] ${socket.id} -> ${targetId} (posizione non valida)`);
@@ -254,6 +261,20 @@ io.on('connection', (socket) => {
         if (players[socket.id]) {
             players[socket.id].hp = Math.min(players[socket.id].maxHp, players[socket.id].hp + healData.amount);
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
+        }
+    });
+    
+    socket.on('playerRespawned', () => {
+        if (players[socket.id]) {
+            // Reset completo stato player sul server
+            players[socket.id].hp = players[socket.id].maxHp;
+            players[socket.id].isDead = false;
+            
+            console.log(`[RESPAWN] ${socket.id} respawnato con ${players[socket.id].hp} HP`);
+            
+            // Notifica tutti i client dello stato aggiornato
+            io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
+            io.emit('playerRespawned', { id: socket.id });
         }
     });
 
