@@ -119,6 +119,29 @@ function initMultiplayer() {
                         p.mesh.userData.targetPos = playerInfo.position; 
                         p.mesh.userData.targetRot = playerInfo.rotation; 
                         p.mesh.userData.animState = playerInfo.animState; 
+
+                        // Aggiorna animazione Knight
+                        if (p.animations && p.mixer) {
+                            let desired = playerInfo.animState || 'idle';
+                            if (p.mesh.userData.isBlocking && p.animations.block) desired = 'block';
+                            if (p.isAttacking && p.animations.attack) desired = 'attack';
+                            if (p.isWhirlwinding && p.animations.whirlwind) desired = 'whirlwind';
+                            if (desired !== p.mesh.userData.currentAnim) {
+                                // Stop anim precedente
+                                const prev = p.animations[p.mesh.userData.currentAnim];
+                                if (prev) prev.stop();
+                                const next = p.animations[desired];
+                                if (next) {
+                                    next.reset();
+                                    next.play();
+                                    p.mesh.userData.currentAnim = desired;
+                                } else if (p.animations.idle && desired !== 'idle') {
+                                    // fallback
+                                    p.animations.idle.play();
+                                    p.mesh.userData.currentAnim = 'idle';
+                                }
+                            }
+                        }
                         if(p.mesh.userData.weaponMode !== playerInfo.weaponMode) { 
                             p.mesh.userData.weaponMode = playerInfo.weaponMode; 
                             updateOpponentWeaponVisuals(otherPlayers[playerInfo.id], playerInfo.weaponMode); 
@@ -269,98 +292,128 @@ function addOtherPlayer(info) {
             if (otherPlayers[info.id]) {
                 removeOtherPlayer(info.id);
             }
-            const mesh = new THREE.Group();
-            const playerTeamColor = info.teamColor || 0x2c3e50;
-            const armorMat = new THREE.MeshStandardMaterial({ 
-                color: playerTeamColor, 
-                metalness: 0.7,
-                emissive: playerTeamColor,
-                emissiveIntensity: 0.3
-            }); 
-            const metalMat = new THREE.MeshStandardMaterial({ color: 0x95a5a6, metalness: 0.9 });
-            const torso = new THREE.Mesh(new THREE.BoxGeometry(4.5, 6.5, 3), armorMat); torso.position.y = 3.5; mesh.add(torso);
-            const chest = new THREE.Mesh(new THREE.BoxGeometry(4.7, 3.5, 3.2), metalMat); chest.position.y = 5.0; mesh.add(chest);
             
-            const headGroup = createHelmet(mesh);
-
-            // Gambe composte (Cosce e Stivali)
-            const legUpperGeo = new THREE.BoxGeometry(1.6, 3.25, 1.6);
-            const legLowerGeo = new THREE.BoxGeometry(1.6, 3.25, 1.6);
-            
-            // Gamba Sinistra
-            const legL = new THREE.Mesh(legUpperGeo, armorMat); legL.geometry.translate(0, -3.25 / 2, 0); 
-            legL.position.set(-1.4, 3.5, 0); 
-            const bootL = new THREE.Mesh(legLowerGeo, armorMat); bootL.geometry.translate(0, -3.25 / 2, 0);
-            bootL.position.y = -3.25;
-            legL.add(bootL);
-            mesh.add(legL);
-
-            // Gamba Destra
-            const legR = new THREE.Mesh(legUpperGeo, armorMat); legR.geometry.translate(0, -3.25 / 2, 0); 
-            legR.position.set(1.4, 3.5, 0); 
-            const bootR = new THREE.Mesh(legLowerGeo, armorMat); bootR.geometry.translate(0, -3.25 / 2, 0);
-            bootR.position.y = -3.25;
-            legR.add(bootR);
-            mesh.add(legR);
-            
-            const armGeo = new THREE.BoxGeometry(1.4, 6, 1.4);
-            const armL = new THREE.Mesh(armGeo, armorMat); armL.geometry.translate(0,-2.5,0); armL.position.set(-3, 8.0, 0); 
-            mesh.add(armL);
-            const armR = new THREE.Mesh(armGeo, armorMat); armR.geometry.translate(0,-2.5,0); armR.position.set(3, 8.0, 0); 
-            mesh.add(armR);
-            const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.3,22), new THREE.MeshStandardMaterial({color:0x3e2723})); staff.position.set(0, -4, 0); staff.rotation.x = -Math.PI/6; armR.add(staff);
-            
-            const swordGroup = new THREE.Group();
-            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.8, 18, 0.2), new THREE.MeshStandardMaterial({color:0xecf0f1})); blade.position.y=10; swordGroup.add(blade);
-            const guard = new THREE.Mesh(new THREE.BoxGeometry(6, 0.8, 0.8), new THREE.MeshStandardMaterial({color:0xf39c12})); guard.position.y=1; swordGroup.add(guard);
-            const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 4), new THREE.MeshStandardMaterial({color:0x5a3a22})); hilt.position.y=-1.5; swordGroup.add(hilt);
-            
-            swordGroup.position.set(0,-5,0.5); 
-            swordGroup.rotation.x = -Math.PI/2; 
-            swordGroup.rotation.z = Math.PI/2; 
-            
-            swordGroup.visible = false; armR.add(swordGroup);
-
-            const shield = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 1), new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.4 }));
-            shield.position.set(3, -2, 0); 
-            shield.rotation.y = -Math.PI/2; 
-            
-            shield.visible = false; armL.add(shield);
-
-            // BOW for Enemy
-            const bowGroup = new THREE.Group();
-            const bowCurve = new THREE.Mesh(new THREE.TorusGeometry(3, 0.2, 8, 12, Math.PI), new THREE.MeshStandardMaterial({color: 0x8B4513}));
-            bowCurve.rotation.z = -Math.PI/2;
-            bowGroup.add(bowCurve);
-            const stringGeo = new THREE.CylinderGeometry(0.05, 0.05, 6);
-            const string = new THREE.Mesh(stringGeo, new THREE.MeshBasicMaterial({color: 0xffffff}));
-            string.rotation.z = -Math.PI/2;
-            string.position.x = -0.5; // Offset string slightly
-            bowGroup.add(string);
-            
-            bowGroup.position.set(0, -2, 0);
-            bowGroup.visible = false;
-            armL.add(bowGroup); // Held in left hand
-
-            mesh.position.set(info.position.x, info.position.y, info.position.z);
-            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar; 
-            scene.add(mesh);
-            otherPlayers[info.id] = { 
-                username: info.username,
-                team: info.team || null,
-                mesh: mesh, 
-                limbs: { 
-                    armL, armR, 
-                    legL: legL, 
-                    legR: legR, 
-                    bootL: bootL, 
-                    bootR: bootR, 
-                    head: headGroup, torso 
-                }, 
-                weaponMeshes: { staff: staff, sword: swordGroup, shield: shield, bow: bowGroup },
-                isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: false,
-                lastStepPos: new THREE.Vector3()
-            };
+            // Carica il modello Knight Met per l'altro giocatore
+            const loader = new THREE.GLTFLoader();
+            loader.load('./models/Knight Met.glb', (gltf) => {
+                const mesh = new THREE.Group();
+                const playerTeamColor = info.teamColor || 0x2c3e50;
+                
+                // Aggiungi il modello Knight Met
+                const knightModel = gltf.scene.clone();
+                knightModel.scale.set(10, 10, 10);
+                knightModel.position.set(0, 0, 0);
+                knightModel.rotation.y = 0; // Orientamento iniziale
+                
+                // Applica il colore del team
+                knightModel.traverse((child) => {
+                    if (child.isMesh) {
+                        if (child.material) {
+                            child.material = child.material.clone();
+                            child.material.color.setHex(playerTeamColor);
+                        }
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                mesh.add(knightModel);
+                
+                // Crea mixer per le animazioni
+                const mixer = new THREE.AnimationMixer(knightModel);
+                const animations = {};
+                
+                // Mappa le animazioni
+                if (gltf.animations && gltf.animations.length > 0) {
+                    gltf.animations.forEach((clip) => {
+                        const name = clip.name.toLowerCase();
+                        
+                        // Rimuovi root motion dalle animazioni di movimento
+                        const shouldRemoveRootMotion = name.includes('walk') || name.includes('run') || name.includes('strafe');
+                        
+                        if (shouldRemoveRootMotion) {
+                            const tracks = [];
+                            for (let i = 0; i < clip.tracks.length; i++) {
+                                const track = clip.tracks[i];
+                                const trackName = track.name;
+                                
+                                // Filtra tracce di posizione root
+                                if (trackName.includes('.position') && 
+                                    (trackName.toLowerCase().includes('hips') || 
+                                     trackName.toLowerCase().includes('mixamorig'))) {
+                                    continue;
+                                }
+                                tracks.push(track);
+                            }
+                            const noRootMotionClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+                            const action = mixer.clipAction(noRootMotionClip);
+                            action.setLoop(THREE.LoopRepeat);
+                            
+                            if (name.includes('walk')) animations.walk = action;
+                            else if (name.includes('run')) animations.run = action;
+                            else if (name.includes('strafe')) animations.strafe = action;
+                        } else {
+                            const action = mixer.clipAction(clip);
+                            
+                            if (name.includes('idle')) {
+                                action.setLoop(THREE.LoopRepeat);
+                                animations.idle = action;
+                            } else if (name.includes('attack') && name.includes('1')) {
+                                action.setLoop(THREE.LoopOnce);
+                                action.clampWhenFinished = true;
+                                animations.attack = action;
+                            } else if (name.includes('block')) {
+                                action.setLoop(THREE.LoopRepeat);
+                                animations.block = action;
+                            } else if (name.includes('heal') || name.includes('cast')) {
+                                action.setLoop(THREE.LoopOnce);
+                                action.clampWhenFinished = true;
+                                animations.heal = action;
+                            } else if (name.includes('jump')) {
+                                action.setLoop(THREE.LoopOnce);
+                                action.clampWhenFinished = false;
+                                animations.jump = action;
+                            }
+                        }
+                    });
+                }
+                
+                // Avvia animazione idle di default
+                if (animations.idle) {
+                    animations.idle.play();
+                }
+                
+                mesh.position.set(info.position.x, info.position.y, info.position.z);
+                const label = createPlayerLabel(info.username); 
+                label.position.y = 14; 
+                label.userData.isLabel = true; 
+                mesh.add(label); 
+                mesh.userData.hpBar = label.userData.hpBar;
+                mesh.userData.knightModel = knightModel;
+                mesh.userData.mixer = mixer;
+                mesh.userData.animations = animations;
+                mesh.userData.currentAnim = 'idle';
+                
+                scene.add(mesh);
+                
+                otherPlayers[info.id] = { 
+                    username: info.username,
+                    team: info.team || null,
+                    mesh: mesh,
+                    mixer: mixer,
+                    animations: animations,
+                    knightModel: knightModel,
+                    isAttacking: false, 
+                    attackTimer: 0, 
+                    isWhirlwinding: false, 
+                    isDead: false,
+                    lastStepPos: new THREE.Vector3()
+                };
+                
+                console.log(`[NETWORK] Knight Met loaded for player ${info.username}`);
+            }, undefined, (error) => {
+                console.error('[NETWORK] Error loading Knight Met for other player:', error);
+            });
         }
 
 function createPlayerLabel(name) {

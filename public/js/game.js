@@ -782,6 +782,11 @@ let socket = null;
             playerStats.isDead = false;
             playerStats.isFalling = false;
             
+                        // Notifica il server del respawn per sincronizzare gli HP
+                        if (socket && socket.connected) {
+                            socket.emit('playerRespawn');
+                        }
+            
             // Determina la posizione di respawn in base alla modalità
             let spawnPos = getSpawnPosition();
             playerMesh.position.copy(spawnPos);
