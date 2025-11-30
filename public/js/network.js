@@ -4,6 +4,18 @@
 const recentlyRemoved = {};
 const DEDUPE_WINDOW_MS = 500; // 500ms window to ignore duplicate adds
 
+// Knight model caching to avoid multiple heavy loads
+let remoteKnightGltf = null; // sorgente originale
+let remoteKnightLoading = false; // flag caricamento in corso
+const remotePendingPlayers = []; // giocatori in attesa del modello
+
+function processPendingRemotePlayers() {
+    while (remoteKnightGltf && remotePendingPlayers.length) {
+        const info = remotePendingPlayers.shift();
+        _finalizeAddOtherPlayer(info);
+    }
+}
+
 // Position update optimization
 let lastPositionSent = Date.now();
 const POSITION_UPDATE_RATE = 50; // Invia posizione ogni 50ms (20 volte al secondo)
@@ -121,27 +133,21 @@ function initMultiplayer() {
                         p.mesh.userData.animState = playerInfo.animState; 
 
                         // Aggiorna animazione Knight
-                        if (p.animations && p.mixer) {
-                            let desired = playerInfo.animState || 'idle';
-                            if (p.mesh.userData.isBlocking && p.animations.block) desired = 'block';
-                            if (p.isAttacking && p.animations.attack) desired = 'attack';
-                            if (p.isWhirlwinding && p.animations.whirlwind) desired = 'whirlwind';
-                            if (desired !== p.mesh.userData.currentAnim) {
-                                // Stop anim precedente
-                                const prev = p.animations[p.mesh.userData.currentAnim];
-                                if (prev) prev.stop();
-                                const next = p.animations[desired];
-                                if (next) {
-                                    next.reset();
-                                    next.play();
-                                    p.mesh.userData.currentAnim = desired;
-                                } else if (p.animations.idle && desired !== 'idle') {
-                                    // fallback
-                                    p.animations.idle.play();
-                                    p.mesh.userData.currentAnim = 'idle';
+                        try {
+                            if (p.mesh.userData.animations && p.mesh.userData.mixer) {
+                                const anims = p.mesh.userData.animations;
+                                let desired = playerInfo.animState || 'idle';
+                                if (p.mesh.userData.isBlocking && anims.block) desired = 'block';
+                                if (p.isAttacking && anims.attack) desired = 'attack';
+                                if (desired !== p.mesh.userData.currentAnim) {
+                                    const prev = anims[p.mesh.userData.currentAnim];
+                                    if (prev) prev.stop();
+                                    const next = anims[desired];
+                                    if (next) { next.reset(); next.play(); p.mesh.userData.currentAnim = desired; }
+                                    else if (anims.idle && desired !== 'idle') { anims.idle.play(); p.mesh.userData.currentAnim = 'idle'; }
                                 }
                             }
-                        }
+                        } catch(e) { console.warn('[NETWORK] Animation update error remote player:', e); }
                         if(p.mesh.userData.weaponMode !== playerInfo.weaponMode) { 
                             p.mesh.userData.weaponMode = playerInfo.weaponMode; 
                             updateOpponentWeaponVisuals(otherPlayers[playerInfo.id], playerInfo.weaponMode); 
@@ -292,128 +298,80 @@ function addOtherPlayer(info) {
             if (otherPlayers[info.id]) {
                 removeOtherPlayer(info.id);
             }
-            
-            // Carica il modello Knight Met per l'altro giocatore
-            const loader = new THREE.GLTFLoader();
-            loader.load('./models/Knight Met.glb', (gltf) => {
-                const mesh = new THREE.Group();
-                const playerTeamColor = info.teamColor || 0x2c3e50;
-                
-                // Aggiungi il modello Knight Met
-                const knightModel = gltf.scene.clone();
-                knightModel.scale.set(10, 10, 10);
-                knightModel.position.set(0, 0, 0);
-                knightModel.rotation.y = 0; // Orientamento iniziale
-                
-                // Applica il colore del team
-                knightModel.traverse((child) => {
-                    if (child.isMesh) {
-                        if (child.material) {
-                            child.material = child.material.clone();
-                            child.material.color.setHex(playerTeamColor);
-                        }
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-                
-                mesh.add(knightModel);
-                
-                // Crea mixer per le animazioni
-                const mixer = new THREE.AnimationMixer(knightModel);
-                const animations = {};
-                
-                // Mappa le animazioni
-                if (gltf.animations && gltf.animations.length > 0) {
-                    gltf.animations.forEach((clip) => {
-                        const name = clip.name.toLowerCase();
-                        
-                        // Rimuovi root motion dalle animazioni di movimento
-                        const shouldRemoveRootMotion = name.includes('walk') || name.includes('run') || name.includes('strafe');
-                        
-                        if (shouldRemoveRootMotion) {
-                            const tracks = [];
-                            for (let i = 0; i < clip.tracks.length; i++) {
-                                const track = clip.tracks[i];
-                                const trackName = track.name;
-                                
-                                // Filtra tracce di posizione root
-                                if (trackName.includes('.position') && 
-                                    (trackName.toLowerCase().includes('hips') || 
-                                     trackName.toLowerCase().includes('mixamorig'))) {
-                                    continue;
-                                }
-                                tracks.push(track);
-                            }
-                            const noRootMotionClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
-                            const action = mixer.clipAction(noRootMotionClip);
-                            action.setLoop(THREE.LoopRepeat);
-                            
-                            if (name.includes('walk')) animations.walk = action;
-                            else if (name.includes('run')) animations.run = action;
-                            else if (name.includes('strafe')) animations.strafe = action;
-                        } else {
-                            const action = mixer.clipAction(clip);
-                            
-                            if (name.includes('idle')) {
-                                action.setLoop(THREE.LoopRepeat);
-                                animations.idle = action;
-                            } else if (name.includes('attack') && name.includes('1')) {
-                                action.setLoop(THREE.LoopOnce);
-                                action.clampWhenFinished = true;
-                                animations.attack = action;
-                            } else if (name.includes('block')) {
-                                action.setLoop(THREE.LoopRepeat);
-                                animations.block = action;
-                            } else if (name.includes('heal') || name.includes('cast')) {
-                                action.setLoop(THREE.LoopOnce);
-                                action.clampWhenFinished = true;
-                                animations.heal = action;
-                            } else if (name.includes('jump')) {
-                                action.setLoop(THREE.LoopOnce);
-                                action.clampWhenFinished = false;
-                                animations.jump = action;
-                            }
+            // Se modello non ancora caricato: avvia caricamento una sola volta e metti in pending
+            if (!remoteKnightGltf) {
+                remotePendingPlayers.push(info);
+                if (!remoteKnightLoading) {
+                    remoteKnightLoading = true;
+                    const loader = new THREE.GLTFLoader();
+                    loader.load('./models/Knight Met.glb', (gltf) => {
+                        remoteKnightGltf = gltf; // cache sorgente
+                        remoteKnightLoading = false;
+                        console.log('[NETWORK] Knight Met sorgente caricata (remote cache)');
+                        processPendingRemotePlayers();
+                    }, undefined, (err) => {
+                        remoteKnightLoading = false;
+                        console.error('[NETWORK] Errore caricamento modello Knight remoto:', err);
+                        // Fallback: usa semplice box
+                        while (remotePendingPlayers.length) {
+                            const inf = remotePendingPlayers.shift();
+                            _fallbackAddOtherPlayer(inf);
                         }
                     });
                 }
-                
-                // Avvia animazione idle di default
-                if (animations.idle) {
-                    animations.idle.play();
-                }
-                
-                mesh.position.set(info.position.x, info.position.y, info.position.z);
-                const label = createPlayerLabel(info.username); 
-                label.position.y = 14; 
-                label.userData.isLabel = true; 
-                mesh.add(label); 
-                mesh.userData.hpBar = label.userData.hpBar;
-                mesh.userData.knightModel = knightModel;
-                mesh.userData.mixer = mixer;
-                mesh.userData.animations = animations;
-                mesh.userData.currentAnim = 'idle';
-                
-                scene.add(mesh);
-                
-                otherPlayers[info.id] = { 
-                    username: info.username,
-                    team: info.team || null,
-                    mesh: mesh,
-                    mixer: mixer,
-                    animations: animations,
-                    knightModel: knightModel,
-                    isAttacking: false, 
-                    attackTimer: 0, 
-                    isWhirlwinding: false, 
-                    isDead: false,
-                    lastStepPos: new THREE.Vector3()
-                };
-                
-                console.log(`[NETWORK] Knight Met loaded for player ${info.username}`);
-            }, undefined, (error) => {
-                console.error('[NETWORK] Error loading Knight Met for other player:', error);
-            });
+                return;
+            }
+            // Se cache già presente, finalizza subito
+            _finalizeAddOtherPlayer(info);
+
+        // Fallback minimale se modello non disponibile
+        function _fallbackAddOtherPlayer(info) {
+            const mesh = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(5,10,5), new THREE.MeshStandardMaterial({color: info.teamColor || 0x555555}));
+            body.position.y = 5; mesh.add(body);
+            mesh.position.set(info.position.x, info.position.y, info.position.z);
+            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
+            scene.add(mesh);
+            otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, isDead:false, lastStepPos:new THREE.Vector3() };
+        }
+
+        // Finalizza creazione player remoto con modello Knight cached
+        function _finalizeAddOtherPlayer(info) {
+            if (!remoteKnightGltf) { _fallbackAddOtherPlayer(info); return; }
+            const sourceScene = remoteKnightGltf.scene;
+            const knightModel = sourceScene.clone(true); // clone profondo
+            knightModel.scale.set(10,10,10);
+            knightModel.rotation.y = 0;
+            // Applica colore squadra
+            const teamColor = info.teamColor || 0x2c3e50;
+            knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});
+            const mesh = new THREE.Group();
+            mesh.add(knightModel);
+            mesh.position.set(info.position.x, info.position.y, info.position.z);
+            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
+            // Mixer & animazioni semplificate
+            const mixer = new THREE.AnimationMixer(knightModel);
+            const animations = {};
+            if (remoteKnightGltf.animations && remoteKnightGltf.animations.length) {
+                remoteKnightGltf.animations.forEach(clip => {
+                    const lname = clip.name.toLowerCase();
+                    const action = mixer.clipAction(clip);
+                    if (lname.includes('idle') && !animations.idle) { action.setLoop(THREE.LoopRepeat); animations.idle = action; }
+                    else if (lname.includes('walk') && !animations.walk) { action.setLoop(THREE.LoopRepeat); animations.walk = action; }
+                    else if (lname.includes('run') && !animations.run) { action.setLoop(THREE.LoopRepeat); animations.run = action; }
+                    else if (lname.includes('strafe') && !animations.strafe) { action.setLoop(THREE.LoopRepeat); animations.strafe = action; }
+                    else if (lname.includes('attack') && !animations.attack) { action.setLoop(THREE.LoopOnce); action.clampWhenFinished=true; animations.attack = action; }
+                    else if (lname.includes('block') && !animations.block) { action.setLoop(THREE.LoopRepeat); animations.block = action; }
+                });
+            }
+            if (animations.idle) animations.idle.play();
+            mesh.userData.mixer = mixer;
+            mesh.userData.animations = animations;
+            mesh.userData.currentAnim = 'idle';
+            scene.add(mesh);
+            otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, mixer, animations, knightModel, isAttacking:false, attackTimer:0, isWhirlwinding:false, isDead:false, lastStepPos:new THREE.Vector3() };
+            console.log('[NETWORK] Remote player creato con modello Knight (cache) username=', info.username);
+        }
         }
 
 function createPlayerLabel(name) {
