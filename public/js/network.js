@@ -12,7 +12,12 @@ const remotePendingPlayers = []; // giocatori in attesa del modello
 function processPendingRemotePlayers() {
     while (remoteKnightGltf && remotePendingPlayers.length) {
         const info = remotePendingPlayers.shift();
-        _finalizeAddOtherPlayer(info);
+        // Se già esiste placeholder per questo id, effettua upgrade invece di creare nuovo mesh
+        if (otherPlayers[info.id] && otherPlayers[info.id].needsKnightUpgrade) {
+            upgradePlaceholderToKnight(info.id, info);
+        } else {
+            _finalizeAddOtherPlayer(info);
+        }
     }
 }
 
@@ -298,8 +303,11 @@ function addOtherPlayer(info) {
             if (otherPlayers[info.id]) {
                 removeOtherPlayer(info.id);
             }
-            // Se modello non ancora caricato: avvia caricamento una sola volta e metti in pending
+            // Se modello non ancora caricato: crea SUBITO placeholder e metti in coda per upgrade
             if (!remoteKnightGltf) {
+                if (!otherPlayers[info.id]) {
+                    _fallbackAddOtherPlayer(info, true); // true => necessita upgrade
+                }
                 remotePendingPlayers.push(info);
                 if (!remoteKnightLoading) {
                     remoteKnightLoading = true;
@@ -312,11 +320,8 @@ function addOtherPlayer(info) {
                     }, undefined, (err) => {
                         remoteKnightLoading = false;
                         console.error('[NETWORK] Errore caricamento modello Knight remoto:', err);
-                        // Fallback: usa semplice box
-                        while (remotePendingPlayers.length) {
-                            const inf = remotePendingPlayers.shift();
-                            _fallbackAddOtherPlayer(inf);
-                        }
+                        // Errore: manteniamo i placeholder
+                        remotePendingPlayers.length = 0;
                     });
                 }
                 return;
@@ -325,7 +330,7 @@ function addOtherPlayer(info) {
             _finalizeAddOtherPlayer(info);
 
         // Fallback minimale se modello non disponibile
-        function _fallbackAddOtherPlayer(info) {
+        function _fallbackAddOtherPlayer(info, needsUpgrade=false) {
             const mesh = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(5,10,5), new THREE.MeshStandardMaterial({color: info.teamColor || 0x555555}));
             body.position.y = 5; mesh.add(body);
@@ -344,7 +349,7 @@ function addOtherPlayer(info) {
             mesh.userData.animations = null; // fallback no animations
             scene.add(mesh);
             otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, isDead:false, lastStepPos:new THREE.Vector3(),
-                limbs:{armL, armR, legL, legR, bootL, bootR, head, torso}, weaponMeshes:{staff, sword, bow, shield} };
+                limbs:{armL, armR, legL, legR, bootL, bootR, head, torso}, weaponMeshes:{staff, sword, bow, shield}, needsKnightUpgrade: needsUpgrade };
         }
 
         // Finalizza creazione player remoto con modello Knight cached
@@ -406,8 +411,42 @@ function addOtherPlayer(info) {
             const shield = new THREE.Group(); shield.visible = false; mesh.add(shield);
             otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, mixer, animations, knightModel,
                 isAttacking:false, attackTimer:0, isWhirlwinding:false, isDead:false, lastStepPos:new THREE.Vector3(),
-                limbs:{armL, armR, legL, legR, bootL, bootR, head, torso}, weaponMeshes:{staff, sword, bow, shield} };
+                limbs:{armL, armR, legL, legR, bootL, bootR, head, torso}, weaponMeshes:{staff, sword, bow, shield}, needsKnightUpgrade:false };
             console.log('[NETWORK] Remote player creato con modello Knight (cache) username=', info.username);
+        }
+
+        function upgradePlaceholderToKnight(id, info) {
+            const existing = otherPlayers[id];
+            if (!existing) return;
+            // Evita doppio upgrade
+            if (!existing.needsKnightUpgrade) return;
+            // Aggiungi modello Knight
+            const sourceScene = remoteKnightGltf.scene;
+            const knightModel = sourceScene.clone(true);
+            knightModel.scale.set(10,10,10);
+            knightModel.rotation.y = 0;
+            const teamColor = info.teamColor || 0x2c3e50;
+            knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});
+            existing.mesh.add(knightModel);
+            // Mixer / animazioni
+            const mixer = new THREE.AnimationMixer(knightModel);
+            const animations = {};
+            if (remoteKnightGltf.animations && remoteKnightGltf.animations.length) {
+                remoteKnightGltf.animations.forEach(clip => {
+                    const lname = clip.name.toLowerCase();
+                    const action = mixer.clipAction(clip);
+                    if (lname.includes('idle') && !animations.idle) { action.setLoop(THREE.LoopRepeat); animations.idle = action; }
+                    else if (lname.includes('walk') && !animations.walk) { action.setLoop(THREE.LoopRepeat); animations.walk = action; }
+                    else if (lname.includes('run') && !animations.run) { action.setLoop(THREE.LoopRepeat); animations.run = action; }
+                    else if (lname.includes('attack') && !animations.attack) { action.setLoop(THREE.LoopOnce); action.clampWhenFinished=true; animations.attack = action; }
+                    else if (lname.includes('block') && !animations.block) { action.setLoop(THREE.LoopRepeat); animations.block = action; }
+                });
+            }
+            if (animations.idle) animations.idle.play();
+            existing.mixer = mixer; existing.animations = animations; existing.knightModel = knightModel;
+            existing.mesh.userData.mixer = mixer; existing.mesh.userData.animations = animations; existing.mesh.userData.currentAnim = 'idle';
+            existing.needsKnightUpgrade = false;
+            console.log('[NETWORK] Upgrade effettuato per player', existing.username);
         }
         }
 
