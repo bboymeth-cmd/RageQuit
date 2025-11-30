@@ -488,6 +488,13 @@ function swingSword() {
             
             playerStats.stamina -= SETTINGS.meleeStaminaCost;
             isAttacking = true; attackTimer = 0;
+            
+            // Trigger Knight sword attack animation
+            if (swordAttackAction && knightAnimationMixer) {
+                swordAttackAction.reset();
+                swordAttackAction.play();
+            }
+            
             if(swordContainer.userData.trail) { swordContainer.userData.trail.material.opacity = 0.8; setTimeout(() => swordContainer.userData.trail.material.opacity = 0, 200); }
             playSound('swing_heavy');
             

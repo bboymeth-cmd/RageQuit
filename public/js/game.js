@@ -1192,6 +1192,11 @@ let socket = null;
                     updateConversions(delta); updateFloatingTexts(delta);
                     updateSwordAnimation(delta);
                     
+                    // Update Knight animation mixer
+                    if (knightAnimationMixer) {
+                        knightAnimationMixer.update(delta);
+                    }
+                    
                     // Aggiorna il mostro IA se in modalità PvE
                     if (isPvEMode && aiMonster) {
                         updateAIMonster(delta);

@@ -1,0 +1,357 @@
+=====================================================
+          RAGEQUIT - SPELLS & ABILITIES LIST
+=====================================================
+
+=========================
+MODALITÀ ARMI
+=========================
+
+1. RANGED (Magia - Bastone)
+2. MELEE (Spada)
+3. BOW (Arco)
+
+=========================
+ATTACCHI RANGED (Magia)
+=========================
+
+1. DARDO MAGICO (Missile)
+   - ID: 1
+   - Tipo: Proiettile tracciante
+   - Danno: 10 HP
+   - Costo Mana: 5
+   - Velocità: 900 unità/sec
+   - Gravità: 300 (traiettoria quasi dritta)
+   - Tempo di Vita: 2.0 secondi
+   - Casting Time: 0.2 secondi
+   - Raggio Collisione: 1.0 unità
+   - Colore: Ciano (0x00ffff)
+   - Effetto: Proiettile sferico con luce
+   - Note: Attacco base veloce e preciso
+
+2. ONDA D'URTO (Shockwave)
+   - ID: 2
+   - Tipo: Proiettile AoE con knockback
+   - Danno: 10 HP
+   - Costo Mana: 15
+   - Velocità: 700 unità/sec
+   - Raggio Esplosione: 45 unità
+   - Raggio Visuale: 20 unità
+   - Forza Push: 900 unità
+   - Forza Verticale: 300 unità
+   - Tempo di Vita: 2.0 secondi
+   - Casting Time: 0.5 secondi
+   - Raggio Collisione: 1.8 unità
+   - Colore: Bianco (0xffffff)
+   - Effetto: Sbalza nemici in area
+   - Note: Colpisce anche te se sei in area, nessuna gravità
+
+3. PALLA DI FUOCO (Fireball)
+   - ID: 3
+   - Tipo: Proiettile esplosivo con knockback
+   - Danno Diretto: 30 HP
+   - Danno Splash: 5 HP (in raggio)
+   - Costo Mana: 20
+   - Velocità: 600 unità/sec
+   - Raggio Esplosione: 35 unità
+   - Forza Verticale: 600 unità
+   - Tempo di Vita: 2.0 secondi
+   - Casting Time: 0.5 secondi
+   - Raggio Collisione: 3.0 unità
+   - Colore: Arancione (0xff6600)
+   - Effetto: Esplosione con push verticale + danno AoE
+   - Note: Attacco più potente, lancia nemici in alto
+
+4. SPUNTONI DI PIETRA (Stone Spikes)
+   - ID: 4
+   - Tipo: Hitscan istantaneo
+   - Danno: 25 HP
+   - Costo Mana: 5
+   - Raggio: 200 unità (raycaster)
+   - Cooldown: 3000 ms (3 secondi)
+   - Casting Time: 0.0 secondi (istantaneo)
+   - Effetto: Spuntoni emergono dalla posizione target
+   - Durata Visiva: 1500 ms
+   - Note: Colpo istantaneo preciso, cooldown lungo
+
+=========================
+ATTACCHI BOW (Arco)
+=========================
+
+5. FRECCIA
+   - ID: 5
+   - Tipo: Proiettile balistico
+   - Danno: 15 HP
+   - Costo Stamina: 5
+   - Velocità: 1000 unità/sec
+   - Gravità: 5 (traiettoria parabolica)
+   - Tempo di Vita: 5.0 secondi
+   - Casting Time: 0.3 secondi
+   - Raggio Collisione: 0.5 unità
+   - Colore: Marrone (0x8B4513)
+   - Geometria: Cilindro rotato (freccia)
+   - Note: Attacco a distanza che usa stamina, traiettoria parabolica
+
+=========================
+ATTACCHI MELEE (Spada)
+=========================
+
+6. FENDENTE (Sword Swing)
+   - Tipo: Attacco corpo a corpo
+   - Danno: 15 HP
+   - Costo Stamina: 5
+   - Raggio: 32 unità
+   - Angolo: 90° frontale (π/2)
+   - Velocità Attacco: 500 ms (0.5 sec tra attacchi)
+   - Knockback: 100 unità di forza
+   - Effetto: Scia spada visibile per 200ms
+   - Audio: swing_heavy
+   - Note: Colpisce tutti i nemici davanti in cono
+
+7. TURBINE (Whirlwind)
+   - Tipo: AoE corpo a corpo + salto
+   - Danno: 30 HP
+   - Costo Stamina: 10
+   - Raggio: 25 unità (360°)
+   - Cooldown: 2000 ms (2 secondi)
+   - Salto Verticale: 150 unità
+   - Durata Effetto: 500 ms
+   - Particelle: 40-60 bianche
+   - Audio: whirlwind
+   - Note: Attacco rotante in area, colpisce tutti intorno, ti fa saltare
+
+=========================
+CURE E SUPPORTO
+=========================
+
+8. CURA ISTANTANEA (Heal)
+   - Tasto: R (KEYBINDS.HEAL)
+   - Tipo: Self-heal istantaneo
+   - Cura: 20 HP
+   - Costo Mana: 10
+   - Cooldown: 10000 ms (10 secondi)
+   - Effetto: Glow verde + flash schermo verde
+   - Audio: heal
+   - Note: Non può superare HP massimo
+
+=========================
+CONVERSIONI (Transfert)
+=========================
+
+MECCANICA CONVERSIONI:
+- Durata: 5.0 secondi
+- Tick: 1.0 secondo (5 tick totali)
+- Cooldown Globale: 1000 ms (1 secondo)
+- Costo per Tick: 5 unità risorsa
+- Guadagno per Tick: 5 unità risorsa
+- Totale Conversione: 25 → 25 (se canala completo)
+- Indicatore: Slot abilità diventa "channeling" per 5 secondi
+- Note: SI INTERROMPE SE MUORI
+
+9. CONVERSIONE STAMINA → HP
+   - Slot: 5 (Tasto default non specificato)
+   - Tipo: Canale 5 secondi
+   - Conversione: 5 Stamina → 5 HP per secondo
+   - Totale: 25 Stamina → 25 HP
+   - Colore Glow: Rosso (0xff0000)
+   - Requisito: Stamina >= 5, HP < Max HP
+   - Note: Utile per sopravvivenza, drena stamina
+
+10. CONVERSIONE HP → MANA
+    - Slot: 6
+    - Tipo: Canale 5 secondi
+    - Conversione: 5 HP → 5 Mana per secondo
+    - Totale: 25 HP → 25 Mana
+    - Colore Glow: Blu (0x0000ff)
+    - Requisito: HP > 5, Mana < Max Mana
+    - Note: PERICOLOSO ma ti rigenera mana
+
+11. CONVERSIONE MANA → STAMINA
+    - Slot: 7
+    - Tipo: Canale 5 secondi
+    - Conversione: 5 Mana → 5 Stamina per secondo
+    - Totale: 25 Mana → 25 Stamina
+    - Colore Glow: Giallo (0xffff00)
+    - Requisito: Mana >= 5, Stamina < Max Stamina
+    - Note: Utile per sprint/salti/attacchi melee
+
+=========================
+DIFESA
+=========================
+
+12. PARATA (Block)
+    - Tipo: Difesa attiva (tieni premuto)
+    - Mitigazione Danno: 70% (0.7)
+    - Costo Stamina: 0.5 per secondo
+    - Requisito: Stamina > 0
+    - Effetto: Scudo blu trasparente (0x00aaff, opacity 0.4)
+    - Note: Riduce TUTTI i danni del 70%, funziona contro:
+      * Proiettili magici (Dardo, Fireball, Onda)
+      * Spuntoni
+      * Frecce
+      * Attacchi Melee
+      * Whirlwind
+      * Danni AoE splash
+
+=========================
+MOVIMENTO
+=========================
+
+13. SALTO (Jump)
+    - Tasto: SPACEBAR (default)
+    - Forza: 200 unità verticale
+    - Costo Stamina: 5
+    - Cooldown: 300 ms
+    - Gravità: 800 unità/sec²
+    - Requisito: canJump = true (a terra)
+    - Note: Consuma stamina ad ogni salto
+
+14. SPRINT
+    - Tipo: Movimento veloce (tieni premuto)
+    - Moltiplicatore Velocità: 1.4x (140%)
+    - Velocità Base: 400 unità/sec
+    - Velocità Sprint: 560 unità/sec
+    - Costo Stamina: 1.0 per secondo
+    - Requisito: Stamina > 0, movimento attivo
+    - Note: Si disattiva automaticamente se stamina = 0
+
+=========================
+RIGENERAZIONE RISORSE
+=========================
+
+MANA:
+- Rigenerazione: 2.0 punti/secondo
+- Massimo: 100 (valore base)
+
+STAMINA:
+- Rigenerazione: 3.0 punti/secondo
+- Massimo: 100 (valore base)
+- Consumo Sprint: -1.0/sec
+- Consumo Block: -0.5/sec
+
+HP:
+- Nessuna rigenerazione naturale
+- Rigenerazione solo tramite:
+  * Cura (R): +20 HP istantanei
+  * Conversione Stamina→HP: +5 HP/sec per 5 sec
+  * Zona Tempio: Regenerazione automatica in area
+
+=========================
+STATISTICHE PLAYER
+=========================
+
+HP Massimo: 100
+Mana Massimo: 100
+Stamina Massimo: 100
+
+Velocità Base: 400 unità/sec
+Velocità Sprint: 560 unità/sec
+Gravità: 800 unità/sec²
+
+=========================
+COOLDOWN GLOBALI (GCD)
+=========================
+
+Fire Rate (Attacchi Ranged): 400 ms
+Melee Rate (Spada): 500 ms
+Whirlwind: 2000 ms (2 sec)
+Stone Spikes: 3000 ms (3 sec)
+Heal: 10000 ms (10 sec)
+Conversioni: 1000 ms (1 sec tra conversioni)
+Salto: 300 ms
+
+=========================
+DANNI E MODIFICATORI
+=========================
+
+BLOCK MITIGATION: -70% danni
+- Applica a TUTTI i tipi di danno
+- Mostra "BLOCK" come floating text
+- Esempio: 30 dmg → 9 dmg se bloccato
+
+SPLASH DAMAGE:
+- Fireball: Raggio 35, 5 HP agli adiacenti
+- Shockwave: Raggio 45, 10 HP + knockback
+
+KNOCKBACK:
+- Melee: 100 unità
+- Shockwave: 900 unità orizzontale + 300 verticale
+- Fireball: 600 unità verticale
+- Whirlwind: 150 unità verticale (salto personale)
+
+=========================
+EFFETTI VISIVI
+=========================
+
+COLORI SPELL:
+- Dardo: Ciano (0x00ffff)
+- Onda: Bianco (0xffffff)
+- Fireball: Arancione (0xff6600)
+- Freccia: Marrone (0x8B4513)
+- Spuntoni: Grigio (0x888888)
+
+PARTICELLE:
+- Hit: 5-20 rosse
+- Morte: 50 rosse, esplosive
+- Whirlwind: 40-60 bianche
+- Conversioni: Glow colorato per tipo
+
+FLOATING TEXT:
+- Danno: Rosso "#ff3333", "-XX"
+- Block: Grigio "#aaa", "BLOCK"
+- Cura: Verde "#00ff00", "+XX"
+- Kill: Rosso, "☠️ KILL!"
+
+=========================
+AUDIO EFFETTI
+=========================
+
+shoot_bolt: Dardo, Onda, Freccia
+shoot_fire: Fireball, Spuntoni
+swing_heavy: Fendente spada
+whirlwind: Turbine
+heal: Cura e conversioni
+hit: Colpo ricevuto
+jump: Salto e knockback
+
+=========================
+RESPAWN
+=========================
+
+- Tempo: 3 secondi automatico
+- Messaggio: "SEI STATO SCONFITTO - Respawn in 3 secondi..."
+- Reset: HP, Mana, Stamina a massimo
+- Reset: Velocità, flag movimento
+- Reset: isDead = false
+- Posizione: getSpawnPosition() (base team)
+
+=========================
+NOTE TECNICHE
+=========================
+
+1. PROIETTILI:
+   - Update physics ogni frame con delta time
+   - Collisione: Raycaster per ostacoli, distance check per player
+   - Gravità applicata a velocity.y ogni frame
+   - Life timer decrementa ogni frame
+
+2. HIT DETECTION:
+   - Client-side prediction
+   - Server-side validation (distanza massima 10 unità)
+   - Controllo isDead prima di applicare danno
+   - HP clamping a 0 (no negativi)
+
+3. CONVERSIONI:
+   - Array activeConversions[] gestisce canali attivi
+   - nextTick decrementa con delta, trigger a 0
+   - SI INTERROMPE SE playerStats.isDead = true
+   - Cooldown globale 1 secondo tra attivazioni
+
+4. BLOCK:
+   - Attivo solo se stamina > 0
+   - Drena 0.5 stamina/sec
+   - Si disattiva automaticamente a stamina = 0
+   - isBlocking flag in userData player mesh
+
+=====================================================
+           FINE DOCUMENTAZIONE
+=====================================================
