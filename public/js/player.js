@@ -39,6 +39,8 @@ function loadKnightModel(callback) {
     
     loader.load('./models/Knight Met.glb', (gltf) => {
         knightModel = gltf.scene;
+        // Espone il gltf sorgente per i giocatori remoti
+        window.knightSource = gltf;
         knightModel.scale.set(10, 10, 10);
         knightModel.position.set(0, 0, 0);
         knightModel.rotation.y = Math.PI; // Gira verso il mirino

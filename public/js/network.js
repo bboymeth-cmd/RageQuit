@@ -295,21 +295,20 @@ function addOtherPlayer(info) {
         mixer:null, animations:null, knightModel:null
     };
 
-    // Carica modello Knight asincrono
-    const loader = new THREE.GLTFLoader();
-    loader.load('./models/Knight Met.glb', (gltf) => {
+    function upgradeIfReady() {
+        if (!window.knightSource || !otherPlayers[info.id]) return false;
+        const base = window.knightSource;
         const teamColor = info.teamColor || 0x2c3e50;
-        const knightModel = gltf.scene.clone(true);
+        const knightModel = base.scene.clone(true);
         knightModel.scale.set(10,10,10);
         knightModel.rotation.y = 0;
         knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});
         mesh.add(knightModel);
-        // Rimuove box placeholder
         mesh.remove(placeholder);
         const mixer = new THREE.AnimationMixer(knightModel);
         const animations = {};
-        if (gltf.animations && gltf.animations.length) {
-            gltf.animations.forEach(clip => {
+        if (base.animations && base.animations.length) {
+            base.animations.forEach(clip => {
                 const lname = clip.name.toLowerCase();
                 const action = mixer.clipAction(clip);
                 if (lname.includes('idle') && !animations.idle) { action.setLoop(THREE.LoopRepeat); animations.idle = action; }
@@ -321,20 +320,24 @@ function addOtherPlayer(info) {
         }
         if (animations.idle) animations.idle.play();
         const p = otherPlayers[info.id];
-        if (p) {
-            p.knightModel = knightModel;
-            p.mixer = mixer;
-            p.animations = animations;
-            p.needsKnightUpgrade = false;
-            mesh.userData.mixer = mixer;
-            mesh.userData.animations = animations;
-            mesh.userData.currentAnim = 'idle';
-            console.log('[NETWORK] Knight model loaded for remote player', p.username);
-        }
-    }, (xhr)=>{}, (err)=>{
-        console.error('[NETWORK] Knight load error remote player', info.username, err);
-        otherPlayers[info.id].needsKnightUpgrade = false; // evita retry loop
-    });
+        p.knightModel = knightModel; p.mixer = mixer; p.animations = animations; p.needsKnightUpgrade = false;
+        mesh.userData.mixer = mixer; mesh.userData.animations = animations; mesh.userData.currentAnim = 'idle';
+        console.log('[NETWORK] Remote Knight upgraded (shared source) for', p.username);
+        return true;
+    }
+    // Tentativo immediato, poi polling se non ancora pronto
+    if (!upgradeIfReady()) {
+        let tries = 0;
+        const poll = setInterval(() => {
+            if (upgradeIfReady() || ++tries > 40) { // ~4s timeout
+                clearInterval(poll);
+                if (tries > 40) {
+                    console.warn('[NETWORK] Knight source non disponibile in tempo per', info.username);
+                    otherPlayers[info.id].needsKnightUpgrade = false; // evita loop
+                }
+            }
+        }, 100);
+    }
 }
 
 function createPlayerLabel(name) {
