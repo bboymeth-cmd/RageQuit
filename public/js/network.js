@@ -342,6 +342,7 @@ function addOtherPlayer(info) {
             const knightModel = sourceScene.clone(true); // clone profondo
             knightModel.scale.set(10,10,10);
             knightModel.rotation.y = 0;
+            knightModel.visible = true; // assicurati sia visibile per i remote
             // Applica colore squadra
             const teamColor = info.teamColor || 0x2c3e50;
             knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});

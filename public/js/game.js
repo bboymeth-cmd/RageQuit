@@ -1209,6 +1209,16 @@ let socket = null;
                             updateKnightAnimation();
                         }
                     }
+
+                    // Aggiorna mixer animazioni degli altri giocatori (remote)
+                    try {
+                        for (const id in otherPlayers) {
+                            const op = otherPlayers[id];
+                            if (op && op.mixer) {
+                                op.mixer.update(delta);
+                            }
+                        }
+                    } catch(e) { /* evita blocchi se qualche mixer manca */ }
                     
                     // Aggiorna il mostro IA se in modalità PvE
                     if (isPvEMode && aiMonster) {
