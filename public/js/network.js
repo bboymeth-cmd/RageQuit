@@ -329,10 +329,22 @@ function addOtherPlayer(info) {
             const mesh = new THREE.Group();
             const body = new THREE.Mesh(new THREE.BoxGeometry(5,10,5), new THREE.MeshStandardMaterial({color: info.teamColor || 0x555555}));
             body.position.y = 5; mesh.add(body);
+            // Placeholder limbs
+            const armL = new THREE.Group(); const armR = new THREE.Group(); const legL = new THREE.Group(); const legR = new THREE.Group();
+            const bootL = new THREE.Group(); const bootR = new THREE.Group(); const head = new THREE.Group(); const torso = body;
+            mesh.add(armL); mesh.add(armR); mesh.add(legL); mesh.add(legR); armL.position.set(-3,8,0); armR.position.set(3,8,0);
+            // Weapon placeholder groups
+            const staff = new THREE.Group(); staff.visible=false; mesh.add(staff);
+            const sword = new THREE.Group(); sword.visible=false; mesh.add(sword);
+            const bow = new THREE.Group(); bow.visible=false; mesh.add(bow);
+            const shield = new THREE.Group(); shield.visible=false; mesh.add(shield);
             mesh.position.set(info.position.x, info.position.y, info.position.z);
             const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
+            mesh.userData.isDead = false; mesh.userData.weaponMode = info.weaponMode || 'ranged';
+            mesh.userData.animations = null; // fallback no animations
             scene.add(mesh);
-            otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, isDead:false, lastStepPos:new THREE.Vector3() };
+            otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, isDead:false, lastStepPos:new THREE.Vector3(),
+                limbs:{armL, armR, legL, legR, bootL, bootR, head, torso}, weaponMeshes:{staff, sword, bow, shield} };
         }
 
         // Finalizza creazione player remoto con modello Knight cached
@@ -348,6 +360,21 @@ function addOtherPlayer(info) {
             knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});
             const mesh = new THREE.Group();
             mesh.add(knightModel);
+            // Extract minimal bones for limbs or create placeholders if not found
+            const armL = new THREE.Group(); const armR = new THREE.Group(); const legL = new THREE.Group(); const legR = new THREE.Group();
+            const bootL = new THREE.Group(); const bootR = new THREE.Group(); const head = new THREE.Group(); const torso = new THREE.Group();
+            // Try to attach to bones if they exist
+            knightModel.traverse(obj => {
+                if (obj.isBone) {
+                    const lname = obj.name.toLowerCase();
+                    if (!armL.parent && lname.includes('leftarm')) armL.parent = obj;
+                    if (!armR.parent && lname.includes('rightarm')) armR.parent = obj;
+                    if (!head.parent && lname.includes('head')) head.parent = obj;
+                }
+            });
+            // Add placeholders to mesh for compatibility (rotation calls)
+            mesh.add(armL); mesh.add(armR); mesh.add(legL); mesh.add(legR); mesh.add(bootL); mesh.add(bootR); mesh.add(head); mesh.add(torso);
+            armL.position.set(-3,8,0); armR.position.set(3,8,0);
             mesh.position.set(info.position.x, info.position.y, info.position.z);
             const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
             // Mixer & animazioni semplificate
@@ -369,8 +396,17 @@ function addOtherPlayer(info) {
             mesh.userData.mixer = mixer;
             mesh.userData.animations = animations;
             mesh.userData.currentAnim = 'idle';
+            mesh.userData.isDead = false;
+            mesh.userData.weaponMode = info.weaponMode || 'ranged';
             scene.add(mesh);
-            otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, mixer, animations, knightModel, isAttacking:false, attackTimer:0, isWhirlwinding:false, isDead:false, lastStepPos:new THREE.Vector3() };
+            // Weapon placeholder groups for compatibility with existing UI logic
+            const staff = new THREE.Group(); staff.visible = (mesh.userData.weaponMode === 'ranged'); mesh.add(staff);
+            const sword = new THREE.Group(); sword.visible = (mesh.userData.weaponMode === 'melee'); mesh.add(sword);
+            const bow = new THREE.Group(); bow.visible = (mesh.userData.weaponMode === 'bow'); mesh.add(bow);
+            const shield = new THREE.Group(); shield.visible = false; mesh.add(shield);
+            otherPlayers[info.id] = { username: info.username, team: info.team || null, mesh, mixer, animations, knightModel,
+                isAttacking:false, attackTimer:0, isWhirlwinding:false, isDead:false, lastStepPos:new THREE.Vector3(),
+                limbs:{armL, armR, legL, legR, bootL, bootR, head, torso}, weaponMeshes:{staff, sword, bow, shield} };
             console.log('[NETWORK] Remote player creato con modello Knight (cache) username=', info.username);
         }
         }
