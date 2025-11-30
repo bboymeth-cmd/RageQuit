@@ -94,30 +94,15 @@ function initMultiplayer() {
                 });
                 socket.on('newPlayer', (playerInfo) => { 
                     console.log('TRACE: newPlayer received id=', playerInfo && playerInfo.id, 'username=', playerInfo && playerInfo.username, 'myId=', myId);
-                    
-                    // CRITICAL: NEVER create your own player in otherPlayers
-                    if (playerInfo.id === myId || playerInfo.id === socket.id) {
-                        console.log('TRACE: BLOCKED newPlayer for self', playerInfo.id);
-                        return;
-                    }
-                    
+                    addToLog(playerInfo.username + " è entrato!", "heal"); 
+                    // Defensive: ignore if server accidentally broadcasts the joining player's own data
+                    if (playerInfo.id === myId || playerInfo.id === socket.id) return;
                     // Skip if recently removed (dedupe window)
                     if (recentlyRemoved[playerInfo.id]) {
                         console.log('TRACE: skipping newPlayer for', playerInfo.id, '(recently removed)');
                         return;
                     }
-                    
-                    addToLog(playerInfo.username + " è entrato!", "heal"); 
-                    
-                    if (!otherPlayers[playerInfo.id]) {
-                        addOtherPlayer(playerInfo);
-                    } else {
-                        // Player già esistente - assicura che sia visibile (potrebbe essere stato nascosto alla morte)
-                        otherPlayers[playerInfo.id].mesh.visible = true;
-                        otherPlayers[playerInfo.id].mesh.userData.isDead = false;
-                        updateEnemyHealthBar(otherPlayers[playerInfo.id], playerInfo.hp || 100);
-                        console.log('TRACE: Player', playerInfo.id, 'già esistente - forzata visibilità');
-                    }
+                    if (!otherPlayers[playerInfo.id]) addOtherPlayer(playerInfo); 
                 });
                 socket.on('playerDisconnected', (id) => { if (otherPlayers[id]) addToLog(otherPlayers[id].username + " è uscito.", "kill"); removeOtherPlayer(id); });
                 socket.on('updateUsername', (data) => { if (otherPlayers[data.id]) { otherPlayers[data.id].username = data.username; const oldLabel = otherPlayers[data.id].mesh.children.find(c => c.userData.isLabel); if (oldLabel) otherPlayers[data.id].mesh.remove(oldLabel); const newLabel = createPlayerLabel(data.username); newLabel.position.y = 14; newLabel.userData.isLabel = true; otherPlayers[data.id].mesh.add(newLabel); otherPlayers[data.id].mesh.userData.hpBar = newLabel.userData.hpBar; } });
@@ -199,11 +184,6 @@ function initMultiplayer() {
                     // Controlla se il player è morto
                     if (playerStats.hp <= 0 && !playerStats.isDead) {
                         playerStats.isDead = true;
-                        playerStats.hp = 0; // Forza HP a 0
-                        // Ferma tutte le conversioni attive
-                        if (typeof activeConversions !== 'undefined') {
-                            activeConversions.length = 0;
-                        }
                         document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Premi RESPAWN</span>"; 
                         document.getElementById('message').style.display = "block";
                         document.exitPointerLock();
@@ -215,7 +195,12 @@ function initMultiplayer() {
                 socket.on('enemyAttacked', (data) => { 
                     if (otherPlayers[data.id]) { 
                         if (data.type === 'melee') { otherPlayers[data.id].mesh.userData.isAttacking = true; otherPlayers[data.id].mesh.userData.attackTimer = 0; playSound('swing_heavy', otherPlayers[data.id].mesh.position); } 
-                        else if (data.type === 'whirlwind') { otherPlayers[data.id].mesh.userData.isWhirlwinding = true; setTimeout(() => { if(otherPlayers[data.id]) otherPlayers[data.id].mesh.userData.isWhirlwinding = false; }, 500); playSound('whirlwind', otherPlayers[data.id].mesh.position); } 
+                        else if (data.type === 'whirlwind') {
+                            otherPlayers[data.id].mesh.userData.isWhirlwinding = true;
+                            const remoteDur = typeof data.duration === 'number' ? data.duration : 500;
+                            setTimeout(() => { if(otherPlayers[data.id]) otherPlayers[data.id].mesh.userData.isWhirlwinding = false; }, remoteDur);
+                            playSound('whirlwind', otherPlayers[data.id].mesh.position);
+                        } 
                         else if (data.type === 'spikes') { 
                             if (data.targetId === myId) { spawnStoneSpikes(playerMesh, true); } 
                             else if (otherPlayers[data.targetId]) { spawnStoneSpikes(otherPlayers[data.targetId].mesh, true); } 
@@ -245,97 +230,19 @@ function initMultiplayer() {
                     } 
                 });
                 
-                socket.on('playerRespawned', (data) => {
-                    // CRITICAL: Ignora se è il nostro player (gestiamo respawn localmente)
-                    if (data.id === myId || data.id === socket.id) {
-                        console.log('[CLIENT] Ignorato playerRespawned per me stesso');
-                        return;
-                    }
-                    
-                    if (otherPlayers[data.id]) {
-                        // Reset completo stato del player respawnato
-                        otherPlayers[data.id].mesh.userData.isDead = false;
-                        otherPlayers[data.id].mesh.visible = true;
-                        
-                        // CRITICAL: Aggiorna team e teamColor per evitare perdita dati
-                        if (data.team !== undefined) {
-                            otherPlayers[data.id].team = data.team;
-                        }
-                        if (data.teamColor !== undefined) {
-                            otherPlayers[data.id].teamColor = data.teamColor;
-                            // Aggiorna il colore del mesh se necessario
-                            if (otherPlayers[data.id].mesh.material) {
-                                otherPlayers[data.id].mesh.material.color.setHex(data.teamColor);
-                            }
-                        }
-                        if (data.username !== undefined) {
-                            otherPlayers[data.id].username = data.username;
-                        }
-                        
-                        // Aggiorna posizione se fornita
-                        if (data.position) {
-                            otherPlayers[data.id].mesh.position.set(data.position.x, data.position.y, data.position.z);
-                        }
-                        if (data.rotation) {
-                            otherPlayers[data.id].mesh.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
-                        }
-                        
-                        // Aggiorna barra HP a piena
-                        updateEnemyHealthBar(otherPlayers[data.id], data.hp || 100);
-                        
-                        // Forza visibilità mesh principale e tutti i figli
-                        otherPlayers[data.id].mesh.traverse((child) => {
-                            child.visible = true;
-                        });
-                        
-                        console.log(`[CLIENT] Player ${data.id} respawnato - team: ${data.team}, visibile: true`);
-                    } else {
-                        // Se il player non esiste, crealo usando i dati del respawn
-                        console.log(`[CLIENT] Player ${data.id} respawnato ma non trovato - creazione con dati completi`);
-                        
-                        // Crea oggetto player completo per addOtherPlayer
-                        const playerInfo = {
-                            id: data.id,
-                            username: data.username || 'Player',
-                            hp: data.hp || 100,
-                            maxHp: data.hp || 100,
-                            position: data.position || { x: 0, y: 6, z: 0 },
-                            rotation: data.rotation || { x: 0, y: 0, z: 0 },
-                            team: data.team,
-                            teamColor: data.teamColor || 0x2c3e50,
-                            animState: 'idle',
-                            weaponMode: 'ranged',
-                            isBlocking: false,
-                            isDead: false
-                        };
-                        
-                        addOtherPlayer(playerInfo);
-                    }
-                });
-                
                 socket.on('playerDied', (data) => { 
                     if (data.id === myId) { 
                         playerStats.isDead = true; playerStats.hp = 0; 
-                        document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Respawn in 3 secondi...</span>"; 
+                        document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Premi RESPAWN</span>"; 
                         document.getElementById('message').style.display = "block"; document.exitPointerLock(); 
                         spawnParticles(playerMesh.position, 0xff0000, 50, 50, 1.0, true);
                         playerMesh.visible = false;
-                        console.log('[CLIENT] Io sono morto - respawn automatico in 3 secondi');
-                        
-                        // RESPAWN AUTOMATICO dopo 3 secondi
-                        setTimeout(() => {
-                            if (playerStats.isDead) { // Controlla se è ancora morto
-                                console.log('[CLIENT] Auto-respawn attivato');
-                                respawnPlayer();
-                            }
-                        }, 3000);
                     } else if(otherPlayers[data.id]) { 
                         otherPlayers[data.id].mesh.userData.isDead = true;
-                        otherPlayers[data.id].mesh.visible = false; // Nascondi immediatamente il corpo
+                        otherPlayers[data.id].mesh.visible = false; // Nascondi invece di rimuovere
                         addToLog(otherPlayers[data.id].username + " eliminato!", "kill"); 
                         spawnParticles(otherPlayers[data.id].mesh.position, 0xff0000, 50, 50, 1.0, true);
-                        console.log(`[CLIENT] Player ${data.id} morto - mesh nascosto immediatamente per tutti`);
-                        // Non rimuovere il giocatore - sarà rimostrato quando respawna
+                        // Non rimuovere il giocatore - sar\u00e0 rimostrato quando respawna
                     }
                     
                     // Incrementa kill counter per il killer
@@ -353,13 +260,6 @@ function initMultiplayer() {
 
 function addOtherPlayer(info) {
             if (!info || !info.id) return;
-            
-            // CRITICAL: NEVER add yourself to otherPlayers
-            if (info.id === myId || info.id === socket.id) {
-                console.error('[BLOCKED] Tentativo di creare copia di me stesso in otherPlayers!', info.id);
-                return;
-            }
-            
             // Skip if recently removed (within dedupe window) to prevent duplicate adds
             if (recentlyRemoved[info.id]) {
                 console.log('TRACE: skipping addOtherPlayer for', info.id, '(recently removed)');
@@ -367,7 +267,6 @@ function addOtherPlayer(info) {
             }
             // If an entry already exists for this id, remove it first to prevent duplicates
             if (otherPlayers[info.id]) {
-                console.warn('[WARN] Player', info.id, 'già esistente in otherPlayers - rimuovo vecchio mesh');
                 removeOtherPlayer(info.id);
             }
             const mesh = new THREE.Group();
@@ -444,21 +343,11 @@ function addOtherPlayer(info) {
             armL.add(bowGroup); // Held in left hand
 
             mesh.position.set(info.position.x, info.position.y, info.position.z);
-            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
-            
-            // CRITICAL: Assicura che il mesh sia visibile (importante per respawn)
-            mesh.visible = true;
-            mesh.traverse((child) => {
-                if (!child.userData.isLabel) { // Non modificare label visibility
-                    child.visible = true;
-                }
-            });
-            
+            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar; 
             scene.add(mesh);
             otherPlayers[info.id] = { 
                 username: info.username,
                 team: info.team || null,
-                teamColor: info.teamColor || 0x2c3e50,
                 mesh: mesh, 
                 limbs: { 
                     armL, armR, 
@@ -469,18 +358,16 @@ function addOtherPlayer(info) {
                     head: headGroup, torso 
                 }, 
                 weaponMeshes: { staff: staff, sword: swordGroup, shield: shield, bow: bowGroup },
-                isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: info.isDead || false,
+                isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: false,
                 lastStepPos: new THREE.Vector3()
             };
-            
-            console.log(`[CLIENT] addOtherPlayer: ${info.id} - visible: ${mesh.visible}, isDead: ${info.isDead || false}, team: ${info.team}`);
         }
 
 function createPlayerLabel(name) {
             const group = new THREE.Group();
             const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d'); canvas.width = 256; canvas.height = 64;
             ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0,0,256,64); ctx.font = "bold 32px Arial"; ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(name, 128, 32);
-            const tex = new THREE.CanvasTexture(canvas); const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })); sprite.scale.set(10, 2.5, 1); group.add(sprite);
+            const tex = new THREE.CanvasTexture(canvas); const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })); sprite.scale.set(6, 1.5, 1); group.add(sprite);
             const bg = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0x330000 })); bg.position.y = 1.2; group.add(bg);
             const fg = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.5), new THREE.MeshBasicMaterial({ color: 0x00ff00 })); fg.position.y = 1.2; fg.position.z = 0.01; fg.geometry.translate(2.5, 0, 0); fg.position.x = -2.5; group.add(fg);
             group.userData.hpBar = fg; return group;

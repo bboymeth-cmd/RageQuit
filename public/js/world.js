@@ -1,17 +1,47 @@
-// world.js - Sistema mappa SQUADRE
+// world.js - Sistema mappa GLTF
 
 function setupWorld() {
-    // Crea solo mappa team
-    createTeamMap();
+    // Carica solo mappa GLTF
+    loadMapModel();
 }
 
-// MAPPA SQUADRE - 4 zone colorate per ogni team
-function createTeamMap() {
-    console.log('[WORLD] Creating TEAM Map');
+// Carica modello GLTF della mappa
+function loadMapModel() {
+    console.log('[WORLD] Loading Ragequit map v1.gltf');
     
-    // Griglia
-    const gridHelper = new THREE.GridHelper(2000, 100, 0x004444, 0x002222);
-    scene.add(gridHelper);
+    const loader = new THREE.GLTFLoader();
+    loader.load(
+        './map/Ragequit map v1.gltf',
+        (gltf) => {
+            const mapModel = gltf.scene;
+            
+            // Scala 0.2 (80% in meno)
+            mapModel.scale.set(0.2, 0.2, 0.2);
+            mapModel.position.set(0, 0, 0);
+            
+            // Abilita ombre
+            mapModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            scene.add(mapModel);
+            console.log('[WORLD] Map loaded successfully - no procedural elements');
+        },
+        (xhr) => {
+            console.log(`[WORLD] Map loading: ${(xhr.loaded / xhr.total * 100).toFixed(0)}%`);
+        },
+        (error) => {
+            console.error('[WORLD] Error loading map:', error);
+        }
+    );
+}
+
+// FUNZIONI RIMOSSE - solo mappa GLTF
+function createTeamMap() {
+    console.log('[WORLD] Skipping procedural map - GLTF only');
     
     // Pavimento con texture gore rossa
     const canvas = document.createElement('canvas');

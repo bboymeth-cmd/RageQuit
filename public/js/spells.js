@@ -81,6 +81,11 @@ function performConversion(type) {
             const now = performance.now();
             if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Ricarica...", "#aaa"); return; }
             
+            // Trigger powerup animation in melee mode
+            if (weaponMode === 'melee' && knightAnimations.powerup) {
+                playKnightAnimation('powerup', true);
+            }
+            
             playSound('heal'); 
             activeConversions.push({ type: type, duration: 5.0, nextTick: 1.0 }); 
             lastConversionTime = now; 
@@ -103,14 +108,10 @@ function updateConversions(delta) {
         }
 
 function applyConversionTick(type) {
-            // Non applicare conversione se morto
-            if (playerStats.isDead) return;
-            
-            const cost = 5; const gain = 5;
+             const cost = 5; const gain = 5;
             if (type === 1) { 
                 if (playerStats.stamina >= cost && playerStats.hp < playerStats.maxHp) { 
-                    playerStats.stamina -= cost; 
-                    playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain); 
+                    playerStats.stamina -= cost; playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain); 
                     if(socket) socket.emit('playerHealed', { amount: gain });
                 } 
             } 
@@ -134,6 +135,12 @@ function performHeal() {
             if (playerStats.hp >= playerStats.maxHp) return;
             playerStats.mana -= SETTINGS.healCost; 
             playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + SETTINGS.healAmount);
+            
+            // Trigger powerup animation in melee mode
+            if (weaponMode === 'melee' && knightAnimations.powerup) {
+                playKnightAnimation('powerup', true);
+            }
+            
             if(socket) {
                 socket.emit('playerHealed', { amount: SETTINGS.healAmount });
                 socket.emit('playerEffect', { type: 'heal' });
@@ -147,20 +154,36 @@ function performWhirlwind() {
             const now = performance.now();
             if (now - lastWhirlwindTime < SETTINGS.whirlwindCooldown) { addToLog("Whirlwind in ricarica...", "#aaa"); return; }
             if (playerStats.stamina < SETTINGS.whirlwindCost) { addToLog("Stamina insufficiente!", "#555"); return; }
-            playerStats.stamina -= SETTINGS.whirlwindCost; lastWhirlwindTime = now; if (!canJump) return; velocity.y += 150; canJump = false; isWhirlwinding = true; setTimeout(() => { isWhirlwinding = false; }, 500);
+            playerStats.stamina -= SETTINGS.whirlwindCost; lastWhirlwindTime = now;
+            // Permetti whirlwind anche in aria: rimuove early return su !canJump
+            if (canJump) {
+                // Piccolo impulso verticale solo se a terra
+                velocity.y += 150;
+                canJump = false;
+            }
+            // Avvia animazione se disponibile
+            if (weaponMode === 'melee' && knightAnimations.whirlwind) {
+                playKnightAnimation('whirlwind', true);
+            }
+            isWhirlwinding = true;
+            let whirlDurationMs = 500; // fallback
+            if (knightAnimations.whirlwind) {
+                const clipDur = knightAnimations.whirlwind.getClip().duration / knightAnimations.whirlwind.getEffectiveTimeScale();
+                whirlDurationMs = Math.round(clipDur * 1000);
+                console.log(`[WHIRLWIND] Flag duration set to clip length: ${clipDur.toFixed(2)}s`);
+            }
+            setTimeout(() => { isWhirlwinding = false; }, whirlDurationMs);
             
             spawnParticles(playerMesh.position, 0xffffff, 40, 60, 0.6, false);
             
             addToLog("TURBINE ATTIVATO!", "spell-cast"); 
             playSound('whirlwind');
             
-            if (socket) socket.emit('playerAttack', { type: 'whirlwind', origin: playerMesh.position, direction: new THREE.Vector3() });
+            if (socket) socket.emit('playerAttack', { type: 'whirlwind', origin: playerMesh.position, direction: new THREE.Vector3(), duration: whirlDurationMs });
             Object.values(otherPlayers).forEach((e) => {
                 if (e.mesh.position.distanceTo(playerMesh.position) < SETTINGS.whirlwindRadius) {
                     let dmg = SETTINGS.whirlwindDmg;
-                    // Controlla se il nemico sta bloccando
-                    const isBlocking = e.mesh.userData.isBlocking || false;
-                    if(isBlocking) {
+                    if(e.mesh.userData.isBlocking) {
                         dmg *= (1.0 - SETTINGS.blockMitigation); 
                         createFloatingText(e.mesh.position.clone().add(new THREE.Vector3(0,10,0)), "BLOCK", "#aaa");
                     } else {
@@ -488,15 +511,17 @@ function swingSword() {
             
             playerStats.stamina -= SETTINGS.meleeStaminaCost;
             isAttacking = true; attackTimer = 0;
-            
-            // Trigger Knight sword attack animation
-            if (swordAttackAction && knightAnimationMixer) {
-                swordAttackAction.reset();
-                swordAttackAction.play();
-            }
-            
             if(swordContainer.userData.trail) { swordContainer.userData.trail.material.opacity = 0.8; setTimeout(() => swordContainer.userData.trail.material.opacity = 0, 200); }
             playSound('swing_heavy');
+            
+            // Forza riavvio animazione attack del Knight
+            if (weaponMode === 'melee' && knightAnimations && knightAnimations.attack) {
+                if (currentKnightAction === knightAnimations.attack) {
+                    knightAnimations.attack.stop();
+                }
+                currentKnightAnimName = '';
+                playKnightAnimation('attack', true);
+            }
             
             if (socket) socket.emit('playerAttack', { type: 'melee', origin: playerMesh.position, direction: new THREE.Vector3() });
             
@@ -506,9 +531,7 @@ function swingSword() {
                 const dir = new THREE.Vector3().subVectors(p.mesh.position, origin);
                 if (dir.length() < SETTINGS.meleeRange && forward.angleTo(dir.normalize()) < Math.PI/2) {
                     let dmg = SETTINGS.meleeDmg;
-                    // Controlla se il nemico sta bloccando
-                    const isBlocking = p.mesh.userData.isBlocking || false;
-                    if(isBlocking) {
+                    if(p.mesh.userData.isBlocking) {
                         dmg *= (1.0 - SETTINGS.blockMitigation); 
                         createFloatingText(p.mesh.position.clone().add(new THREE.Vector3(0,10,0)), "BLOCK", "#aaa");
                     } else {
