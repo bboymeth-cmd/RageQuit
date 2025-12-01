@@ -577,55 +577,32 @@ let socket = null;
             scene = new THREE.Scene(); 
             
             // Background semplice per performance
-            // ATMOSFERA DARK FANTASY
-            scene.background = new THREE.Color(0x1a1a2e); // Blu scuro quasi nero
-            scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0018); // Fog esponenziale per atmosfera misteriosa
+            scene.background = new THREE.Color(0x2a2a3a);
+            scene.fog = new THREE.Fog(0x2a2a3a, 150, 600); // Fog più aggressiva per nascondere pop-in
             
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 1000);
             createPlayer(); createSword(); createStaff(); createShield(); createBow();
             
-            // SISTEMA LUCI DARK FANTASY
-            // Luce ambientale viola scura
-            const ambientLight = new THREE.AmbientLight(0x4a3a5a, 0.4); // Viola tenue
+            // Luci ottimizzate per FPS - ridotte al minimo
+            const ambientLight = new THREE.AmbientLight(0x888899, 1.2); // Solo ambient per performance
             scene.add(ambientLight);
             
-            // Luce direzionale principale (luna)
-            const dirLight = new THREE.DirectionalLight(0x9090c0, 1.2); // Blu lunare
-            dirLight.position.set(100, 300, 150);
-            dirLight.castShadow = true;
-            // Setup ombre
-            dirLight.shadow.mapSize.width = 2048;
-            dirLight.shadow.mapSize.height = 2048;
-            dirLight.shadow.camera.near = 10;
-            dirLight.shadow.camera.far = 800;
-            dirLight.shadow.camera.left = -400;
-            dirLight.shadow.camera.right = 400;
-            dirLight.shadow.camera.top = 400;
-            dirLight.shadow.camera.bottom = -400;
-            dirLight.shadow.bias = -0.0001;
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(150, 250, 100);
+            dirLight.castShadow = false; // Ombre disabilitate per FPS
             scene.add(dirLight);
-            
-            // Luce direzionale secondaria (controluce rosso sangue)
-            const rimLight = new THREE.DirectionalLight(0x8b0000, 0.6); // Rosso scuro
-            rimLight.position.set(-100, 150, -100);
-            scene.add(rimLight);
-            
-            // Luce emisferica per transizione terreno/cielo
-            const hemiLight = new THREE.HemisphereLight(0x4a3a5a, 0x1a0a0a, 0.3);
-            scene.add(hemiLight);
             
             seed = WORLD_SEED; setupWorld(); setupControls(); setupUIEvents();
             renderer = new THREE.WebGLRenderer({ 
-                antialias: true, // Abilita antialiasing per qualità
+                antialias: false,
                 powerPreference: 'high-performance',
-                precision: 'highp', // Alta precisione per ombre migliori
+                precision: 'mediump',
                 alpha: false,
                 stencil: false
             }); 
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Max 2x per performance
+            renderer.setPixelRatio(1);
             renderer.setSize(window.innerWidth, window.innerHeight); 
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Ombre morbide
+            renderer.shadowMap.enabled = false;
             renderer.sortObjects = false;
             
             // Compatibilità con versioni diverse di THREE.js
@@ -803,8 +780,24 @@ let socket = null;
             // Mostra il messaggio
             document.getElementById('message').style.display = 'none';
             
-            // Rendi visibile il player
+            // Rendi visibile il player - FORZA VISIBILITÀ
             playerMesh.visible = true;
+            playerMesh.traverse((child) => {
+                child.visible = true;
+            });
+            
+            console.log('[CLIENT] respawnPlayer - playerMesh.visible:', playerMesh.visible, 'isDead:', playerStats.isDead);
+            
+            // Notifica il server del respawn e richiedi lo stato aggiornato di tutti i player
+            if (socket && socket.connected) {
+                socket.emit('playerRespawned', {
+                    position: playerMesh.position,
+                    rotation: playerMesh.rotation,
+                    hp: playerStats.hp,
+                    isDead: false // ESPLICITA che NON siamo più morti
+                });
+                socket.emit('requestPosition'); // Richiedi posizioni aggiornate
+            }
             
             // Aggiorna l'UI
             updateUI();
@@ -946,10 +939,6 @@ let socket = null;
                         const now = performance.now();
                         if(canJump && (now - lastJumpTime > SETTINGS.jumpCooldown) && playerStats.stamina >= SETTINGS.jumpCost) {
                             velocity.y += SETTINGS.jumpForce; playerStats.stamina -= SETTINGS.jumpCost; lastJumpTime = now; canJump = false;
-                            // Trigger animazione jump semplice
-                            if (weaponMode === 'melee' && typeof playKnightAnimation === 'function') {
-                                playKnightAnimation('jump', true);
-                            }
                         }
                         break;
                     case KEYBINDS.SPRINT: isSprinting=true; break; 
@@ -1188,6 +1177,12 @@ let socket = null;
             }
             
             if (!playerStats.isDead && !isSpectating) { 
+                // SAFETY CHECK: Assicura che playerMesh sia sempre visibile quando vivo
+                if (!playerMesh.visible) {
+                    console.warn('[GAME LOOP] playerMesh invisibile ma player vivo - FIXING');
+                    playerMesh.visible = true;
+                }
+                
                 try {
                     updatePhysics(delta); 
                     updateCamera(); // Moved here to fix lag
@@ -1196,14 +1191,6 @@ let socket = null;
                     updateParticles(delta); // Aggiorna particelle (sangue, gibs, ecc)
                     updateConversions(delta); updateFloatingTexts(delta);
                     updateSwordAnimation(delta);
-                    
-                    // Update Knight mixer e animazioni
-                    if (knightMixer && weaponMode === 'melee') {
-                        knightMixer.update(delta);
-                        if (typeof updateKnightAnimation === 'function') {
-                            updateKnightAnimation();
-                        }
-                    }
                     
                     // Aggiorna il mostro IA se in modalità PvE
                     if (isPvEMode && aiMonster) {

@@ -56,6 +56,7 @@ io.on('connection', (socket) => {
     lastSeen[socket.id] = Date.now();
 
     socket.on('joinGame', (userData) => {
+        // Reset completo del player (rimuove flag isDead)
         if (players[socket.id]) delete players[socket.id];
         
         if (Object.keys(players).length >= 10) {
@@ -188,6 +189,8 @@ io.on('connection', (socket) => {
             if (pushData.damage) {
                 actualDamage = pushData.damage;
                 players[targetId].hp -= actualDamage;
+                // Clamp HP a 0 per evitare valori negativi
+                players[targetId].hp = Math.max(0, players[targetId].hp);
             }
             // Emit to the target player so they can execute the push effect
             io.to(targetId).emit('playerPushed', {
@@ -204,13 +207,26 @@ io.on('connection', (socket) => {
 
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {
                 players[targetId].isDead = true;
-                io.emit('playerDied', { id: targetId, killerId: socket.id }); // Sent to ALL players
+                console.log(`[SERVER] Player ${targetId} morto (PUSH) - broadcasting a tutti`);
+                // Broadcast morte a TUTTI i client immediatamente
+                io.emit('playerDied', { 
+                    id: targetId, 
+                    killerId: socket.id,
+                    position: players[targetId].position
+                });
             }
         }
     });
 
     socket.on('playerHit', (dmgData) => {
         const targetId = dmgData.targetId;
+        
+        // Verifica che il target esista e non sia già morto
+        if (!players[targetId] || players[targetId].isDead || players[targetId].hp <= 0) {
+            console.log(`[HIT REJECTED] ${socket.id} -> ${targetId} (target morto o inesistente)`);
+            socket.emit('hitRejected', { targetId: targetId });
+            return;
+        }
         
         // VALIDAZIONE SERVER-SIDE DELL'HIT
         if (!validateHit(socket.id, targetId, dmgData.hitPosition || players[targetId]?.position)) {
@@ -224,7 +240,10 @@ io.on('connection', (socket) => {
             const actualDamage = dmgData.damage;
             players[targetId].hp -= actualDamage;
             
-            console.log(`[HIT VALIDATED] ${socket.id} -> ${targetId} (${actualDamage} dmg, pos: ${JSON.stringify(players[targetId].position)})`);
+            // Clamp HP a 0 per evitare valori negativi
+            players[targetId].hp = Math.max(0, players[targetId].hp);
+            
+            console.log(`[HIT VALIDATED] ${socket.id} -> ${targetId} (${actualDamage} dmg, hp: ${players[targetId].hp})`);
             
             // Send health update to all
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
@@ -239,7 +258,13 @@ io.on('connection', (socket) => {
             
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {
                 players[targetId].isDead = true;
-                io.emit('playerDied', { id: targetId, killerId: socket.id }); // Sent to ALL players
+                console.log(`[SERVER] Player ${targetId} morto (HIT) - broadcasting a tutti`);
+                // Broadcast morte a TUTTI i client immediatamente
+                io.emit('playerDied', { 
+                    id: targetId, 
+                    killerId: socket.id,
+                    position: players[targetId].position
+                });
             }
         }
     });
@@ -248,6 +273,53 @@ io.on('connection', (socket) => {
         if (players[socket.id]) {
             players[socket.id].hp = Math.min(players[socket.id].maxHp, players[socket.id].hp + healData.amount);
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
+        }
+    });
+    
+    socket.on('playerRespawned', (data) => {
+        if (players[socket.id]) {
+            // Reset completo stato player sul server
+            players[socket.id].hp = players[socket.id].maxHp;
+            players[socket.id].isDead = false;
+            
+            // Aggiorna posizione se fornita
+            if (data && data.position) {
+                players[socket.id].position = data.position;
+            }
+            if (data && data.rotation) {
+                players[socket.id].rotation = data.rotation;
+            }
+            
+            console.log(`[RESPAWN] ${socket.id} respawnato - team: ${players[socket.id].team}, teamColor: ${players[socket.id].teamColor}`);
+            
+            // Notifica tutti i client dello stato aggiornato con dati completi
+            io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
+            
+            // Emit multipli per garantire sincronizzazione - INCLUDE TEAM E TEAMCOLOR
+            io.emit('playerRespawned', { 
+                id: socket.id,
+                hp: players[socket.id].hp,
+                position: players[socket.id].position,
+                rotation: players[socket.id].rotation,
+                team: players[socket.id].team,
+                teamColor: players[socket.id].teamColor,
+                username: players[socket.id].username,
+                timestamp: Date.now() // Timestamp per debug
+            });
+            
+            // Broadcast newPlayer COMPLETO per assicurare visibilità (importante per respawn ritardati)
+            socket.broadcast.emit('newPlayer', players[socket.id]);
+            
+            // Doppio check: forza aggiornamento posizione
+            setTimeout(() => {
+                if (players[socket.id] && !players[socket.id].isDead) {
+                    socket.broadcast.emit('updatePosition', {
+                        id: socket.id,
+                        position: players[socket.id].position,
+                        rotation: players[socket.id].rotation
+                    });
+                }
+            }, 100);
         }
     });
 
