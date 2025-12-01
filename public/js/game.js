@@ -1197,21 +1197,12 @@ let socket = null;
                     updateConversions(delta); updateFloatingTexts(delta);
                     updateSwordAnimation(delta);
                     
-                    // Update Knight mixer e animazioni (locale)
+                    // Update Knight mixer e animazioni
                     if (knightMixer && weaponMode === 'melee') {
                         knightMixer.update(delta);
                         if (typeof updateKnightAnimation === 'function') {
                             updateKnightAnimation();
                         }
-                    }
-
-                    // Update mixer dei giocatori remoti (se presente)
-                    if (typeof otherPlayers === 'object') {
-                        Object.values(otherPlayers).forEach(p => {
-                            if (p && p.mixer) {
-                                p.mixer.update(delta);
-                            }
-                        });
                     }
                     
                     // Aggiorna il mostro IA se in modalità PvE

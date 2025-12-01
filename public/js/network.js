@@ -259,91 +259,109 @@ function initMultiplayer() {
         }
 
 function addOtherPlayer(info) {
-    if (!info || !info.id) return;
-    if (recentlyRemoved[info.id]) return;
-    if (otherPlayers[info.id]) removeOtherPlayer(info.id);
-
-    // Placeholder base (semplice box) + strutture richieste dal codice esistente
-    const mesh = new THREE.Group();
-    const placeholder = new THREE.Mesh(
-        new THREE.BoxGeometry(5,10,5),
-        new THREE.MeshBasicMaterial({color: info.teamColor || 0xaa3333}) // Basic per visibilità anche senza luci
-    );
-    placeholder.position.y = 5; mesh.add(placeholder);
-    // Limbs placeholder
-    const armL = new THREE.Group(); const armR = new THREE.Group(); const legL = new THREE.Group(); const legR = new THREE.Group();
-    const bootL = new THREE.Group(); const bootR = new THREE.Group(); const head = new THREE.Group(); const torso = placeholder;
-    mesh.add(armL); mesh.add(armR); mesh.add(legL); mesh.add(legR); mesh.add(bootL); mesh.add(bootR); mesh.add(head);
-    armL.position.set(-3,8,0); armR.position.set(3,8,0);
-    // Weapon placeholders
-    const staff = new THREE.Group(); staff.visible=false; mesh.add(staff);
-    const sword = new THREE.Group(); sword.visible=false; mesh.add(sword);
-    const bow = new THREE.Group(); bow.visible=false; mesh.add(bow);
-    const shield = new THREE.Group(); shield.visible=false; mesh.add(shield);
-
-    mesh.position.set(info.position.x, info.position.y, info.position.z);
-    const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar;
-    mesh.userData.isDead = false; mesh.userData.weaponMode = info.weaponMode || 'melee';
-    scene.add(mesh);
-
-    otherPlayers[info.id] = {
-        username: info.username,
-        team: info.team || null,
-        mesh,
-        limbs:{armL, armR, legL, legR, bootL, bootR, head, torso},
-        weaponMeshes:{staff, sword, bow, shield},
-        isAttacking:false, attackTimer:0, isWhirlwinding:false, isDead:false,
-        lastStepPos:new THREE.Vector3(),
-        needsKnightUpgrade:true,
-        mixer:null, animations:null, knightModel:null
-    };
-
-    function upgradeIfReady() {
-        if (!window.knightSource || !otherPlayers[info.id]) return false;
-        const base = window.knightSource;
-        const teamColor = info.teamColor || 0x2c3e50;
-        const knightModel = (THREE.SkeletonUtils && THREE.SkeletonUtils.clone)
-            ? THREE.SkeletonUtils.clone(base.scene)
-            : base.scene.clone(true);
-        knightModel.scale.set(10,10,10);
-        knightModel.rotation.y = 0;
-        knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});
-        mesh.add(knightModel);
-        mesh.remove(placeholder);
-        const mixer = new THREE.AnimationMixer(knightModel);
-        const animations = {};
-        if (base.animations && base.animations.length) {
-            base.animations.forEach(clip => {
-                const lname = clip.name.toLowerCase();
-                const action = mixer.clipAction(clip);
-                if (lname.includes('idle') && !animations.idle) { action.setLoop(THREE.LoopRepeat); animations.idle = action; }
-                else if (lname.includes('walk') && !animations.walk) { action.setLoop(THREE.LoopRepeat); animations.walk = action; }
-                else if (lname.includes('run') && !animations.run) { action.setLoop(THREE.LoopRepeat); animations.run = action; }
-                else if (lname.includes('attack') && !animations.attack) { action.setLoop(THREE.LoopOnce); action.clampWhenFinished = true; animations.attack = action; }
-                else if (lname.includes('block') && !animations.block) { action.setLoop(THREE.LoopRepeat); animations.block = action; }
-            });
-        }
-        if (animations.idle) animations.idle.play();
-        const p = otherPlayers[info.id];
-        p.knightModel = knightModel; p.mixer = mixer; p.animations = animations; p.needsKnightUpgrade = false;
-        mesh.userData.mixer = mixer; mesh.userData.animations = animations; mesh.userData.currentAnim = 'idle';
-        console.log('[NETWORK] Remote Knight upgraded (shared source) for', p.username);
-        return true;
-    }
-    // Tentativo immediato, poi polling se non ancora pronto
-    if (!upgradeIfReady()) {
-        let tries = 0;
-        const poll = setInterval(() => {
-            if (upgradeIfReady() || ++tries > 40) { // ~4s timeout
-                clearInterval(poll);
-                if (tries > 40) {
-                    console.warn('[NETWORK] Knight source non disponibile in tempo per', info.username);
-                    otherPlayers[info.id].needsKnightUpgrade = false; // evita loop
-                }
+            if (!info || !info.id) return;
+            // Skip if recently removed (within dedupe window) to prevent duplicate adds
+            if (recentlyRemoved[info.id]) {
+                console.log('TRACE: skipping addOtherPlayer for', info.id, '(recently removed)');
+                return;
             }
-        }, 100);
-    }
-}
+            // If an entry already exists for this id, remove it first to prevent duplicates
+            if (otherPlayers[info.id]) {
+                removeOtherPlayer(info.id);
+            }
+            const mesh = new THREE.Group();
+            const playerTeamColor = info.teamColor || 0x2c3e50;
+            const armorMat = new THREE.MeshStandardMaterial({ 
+                color: playerTeamColor, 
+                metalness: 0.7,
+                emissive: playerTeamColor,
+                emissiveIntensity: 0.3
+            }); 
+            const metalMat = new THREE.MeshStandardMaterial({ color: 0x95a5a6, metalness: 0.9 });
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(4.5, 6.5, 3), armorMat); torso.position.y = 3.5; mesh.add(torso);
+            const chest = new THREE.Mesh(new THREE.BoxGeometry(4.7, 3.5, 3.2), metalMat); chest.position.y = 5.0; mesh.add(chest);
+            
+            const headGroup = createHelmet(mesh);
+
+            // Gambe composte (Cosce e Stivali)
+            const legUpperGeo = new THREE.BoxGeometry(1.6, 3.25, 1.6);
+            const legLowerGeo = new THREE.BoxGeometry(1.6, 3.25, 1.6);
+            
+            // Gamba Sinistra
+            const legL = new THREE.Mesh(legUpperGeo, armorMat); legL.geometry.translate(0, -3.25 / 2, 0); 
+            legL.position.set(-1.4, 3.5, 0); 
+            const bootL = new THREE.Mesh(legLowerGeo, armorMat); bootL.geometry.translate(0, -3.25 / 2, 0);
+            bootL.position.y = -3.25;
+            legL.add(bootL);
+            mesh.add(legL);
+
+            // Gamba Destra
+            const legR = new THREE.Mesh(legUpperGeo, armorMat); legR.geometry.translate(0, -3.25 / 2, 0); 
+            legR.position.set(1.4, 3.5, 0); 
+            const bootR = new THREE.Mesh(legLowerGeo, armorMat); bootR.geometry.translate(0, -3.25 / 2, 0);
+            bootR.position.y = -3.25;
+            legR.add(bootR);
+            mesh.add(legR);
+            
+            const armGeo = new THREE.BoxGeometry(1.4, 6, 1.4);
+            const armL = new THREE.Mesh(armGeo, armorMat); armL.geometry.translate(0,-2.5,0); armL.position.set(-3, 8.0, 0); 
+            mesh.add(armL);
+            const armR = new THREE.Mesh(armGeo, armorMat); armR.geometry.translate(0,-2.5,0); armR.position.set(3, 8.0, 0); 
+            mesh.add(armR);
+            const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.3,22), new THREE.MeshStandardMaterial({color:0x3e2723})); staff.position.set(0, -4, 0); staff.rotation.x = -Math.PI/6; armR.add(staff);
+            
+            const swordGroup = new THREE.Group();
+            const blade = new THREE.Mesh(new THREE.BoxGeometry(0.8, 18, 0.2), new THREE.MeshStandardMaterial({color:0xecf0f1})); blade.position.y=10; swordGroup.add(blade);
+            const guard = new THREE.Mesh(new THREE.BoxGeometry(6, 0.8, 0.8), new THREE.MeshStandardMaterial({color:0xf39c12})); guard.position.y=1; swordGroup.add(guard);
+            const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 4), new THREE.MeshStandardMaterial({color:0x5a3a22})); hilt.position.y=-1.5; swordGroup.add(hilt);
+            
+            swordGroup.position.set(0,-5,0.5); 
+            swordGroup.rotation.x = -Math.PI/2; 
+            swordGroup.rotation.z = Math.PI/2; 
+            
+            swordGroup.visible = false; armR.add(swordGroup);
+
+            const shield = new THREE.Mesh(new THREE.BoxGeometry(4, 8, 1), new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.4 }));
+            shield.position.set(3, -2, 0); 
+            shield.rotation.y = -Math.PI/2; 
+            
+            shield.visible = false; armL.add(shield);
+
+            // BOW for Enemy
+            const bowGroup = new THREE.Group();
+            const bowCurve = new THREE.Mesh(new THREE.TorusGeometry(3, 0.2, 8, 12, Math.PI), new THREE.MeshStandardMaterial({color: 0x8B4513}));
+            bowCurve.rotation.z = -Math.PI/2;
+            bowGroup.add(bowCurve);
+            const stringGeo = new THREE.CylinderGeometry(0.05, 0.05, 6);
+            const string = new THREE.Mesh(stringGeo, new THREE.MeshBasicMaterial({color: 0xffffff}));
+            string.rotation.z = -Math.PI/2;
+            string.position.x = -0.5; // Offset string slightly
+            bowGroup.add(string);
+            
+            bowGroup.position.set(0, -2, 0);
+            bowGroup.visible = false;
+            armL.add(bowGroup); // Held in left hand
+
+            mesh.position.set(info.position.x, info.position.y, info.position.z);
+            const label = createPlayerLabel(info.username); label.position.y = 14; label.userData.isLabel = true; mesh.add(label); mesh.userData.hpBar = label.userData.hpBar; 
+            scene.add(mesh);
+            otherPlayers[info.id] = { 
+                username: info.username,
+                team: info.team || null,
+                mesh: mesh, 
+                limbs: { 
+                    armL, armR, 
+                    legL: legL, 
+                    legR: legR, 
+                    bootL: bootL, 
+                    bootR: bootR, 
+                    head: headGroup, torso 
+                }, 
+                weaponMeshes: { staff: staff, sword: swordGroup, shield: shield, bow: bowGroup },
+                isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: false,
+                lastStepPos: new THREE.Vector3()
+            };
+        }
 
 function createPlayerLabel(name) {
             const group = new THREE.Group();
