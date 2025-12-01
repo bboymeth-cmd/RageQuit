@@ -248,15 +248,6 @@ io.on('connection', (socket) => {
         if (players[socket.id]) {
             players[socket.id].hp = Math.min(players[socket.id].maxHp, players[socket.id].hp + healData.amount);
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
-
-            socket.on('playerRespawn', () => {
-                if (players[socket.id]) {
-                    players[socket.id].hp = players[socket.id].maxHp;
-                    players[socket.id].isDead = false;
-                    io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
-                    console.log(`[RESPAWN] ${socket.id} respawnato con ${players[socket.id].hp} HP`);
-                }
-            });
         }
     });
 
