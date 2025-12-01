@@ -40,7 +40,7 @@ function loadKnightModel(callback) {
     loader.load('./models/Knight Met.glb', (gltf) => {
         knightModel = gltf.scene;
         knightModel.scale.set(10, 10, 10);
-        knightModel.position.set(0, 0, 0);
+        knightModel.position.set(0, -6.0, 0); // Lowered to touch ground (Player pivot is at y=6)
         knightModel.rotation.y = Math.PI; // Gira verso il mirino
         knightModel.visible = false;
 
@@ -54,6 +54,15 @@ function loadKnightModel(callback) {
                 if (child.material) {
                     child.material = child.material.clone();
                     child.material.color.setHex(teamColor);
+                    // Apply 30% tint of team color to preserve texture
+                    child.material.color.setHex(0xffffff).lerp(new THREE.Color(teamColor), 0.3);
+
+                    // Remove emissive to avoid washing out texture
+                    child.material.emissive = new THREE.Color(0x000000);
+                    child.material.emissiveIntensity = 0.0;
+
+                    child.material.metalness = 0.5; // Standard metalness
+                    child.material.roughness = 0.5; // Standard roughness
                 }
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -609,6 +618,16 @@ function updateKnightAnimation() {
     }
 
     if (isBlocking) {
+        // PRIORITY: Stop Powerup if blocking starts
+        if (knightAnimations.powerup && knightAnimations.powerup.isRunning()) {
+            knightAnimations.powerup.stop();
+            console.log('[KNIGHT] Blocking interrupted Powerup');
+        }
+        if (knightAnimations.powerupUpper && knightAnimations.powerupUpper.isRunning()) {
+            knightAnimations.powerupUpper.stop();
+            console.log('[KNIGHT] Blocking interrupted Powerup Upper');
+        }
+
         // LAYERING: se blocchi E ti muovi, upper body = blockIdle, lower body = strafe
         if (isMoving && knightAnimations.blockIdleUpper && knightAnimations.strafeLower) {
             // Stoppa altre animazioni che potrebbero causare conflitti
@@ -1130,7 +1149,14 @@ function updateAnimations(delta) {
         if (mesh.userData.targetRot) { mesh.rotation.set(mesh.userData.targetRot.x, mesh.userData.targetRot.y, mesh.userData.targetRot.z); }
         const state = mesh.userData.animState; const limbs = p.limbs; let isEnemyAttacking = false;
         if (mesh.userData.isWhirlwinding) {
-            mesh.rotation.y += delta * 20; limbs.armR.rotation.x = -Math.PI / 2; limbs.armL.rotation.x = -Math.PI / 2; return;
+            // Only rotate manually if Knight model is NOT visible (legacy behavior)
+            if (!p.knightModel || !p.knightModel.visible) {
+                mesh.rotation.y += delta * 20;
+            }
+            limbs.armR.rotation.x = -Math.PI / 2; limbs.armL.rotation.x = -Math.PI / 2;
+            // Don't return here, let the Knight animation update happen in updateOtherPlayersAnimations
+            // But we need to skip the rest of the low-poly limb updates
+            return;
         }
         if (mesh.userData.isAttacking) {
             mesh.userData.attackTimer += delta * 15;
@@ -1344,7 +1370,7 @@ function updatePhysics(delta) {
         }
     });
     if (socket && myId) {
-        const animState = isSprinting ? 'run' : (moving) ? 'walk' : 'idle';
+        const animState = !canJump ? 'jump' : (isSprinting ? 'run' : (moving) ? 'walk' : 'idle');
         socket.emit('playerMovement', { position: playerMesh.position, rotation: { x: playerMesh.rotation.x, y: playerMesh.rotation.y, z: playerMesh.rotation.z }, animState: animState, weaponMode: weaponMode });
     }
 }
@@ -1362,4 +1388,500 @@ function updateCamera() {
         camera.lookAt(lookAtPoint);
     }
 }
+
+// --- ENEMY KNIGHT MODEL IMPLEMENTATION ---
+
+function loadEnemyKnightModel(playerObj) {
+    if (playerObj.knightModel) return; // Già caricato
+
+    const loader = new THREE.GLTFLoader();
+    loader.load('./models/Knight Met.glb', (gltf) => {
+        const model = gltf.scene;
+
+        model.scale.set(10, 10, 10);
+        model.position.set(0, -6.0, 0); // Lowered to touch ground (Player pivot is at y=6)
+        model.rotation.y = Math.PI;
+
+        // ALWAYS VISIBLE - Hide low poly parts permanently
+        model.visible = true;
+        if (playerObj.limbs) {
+            if (playerObj.limbs.torso) playerObj.limbs.torso.visible = false;
+            if (playerObj.limbs.chest) playerObj.limbs.chest.visible = false;
+            if (playerObj.limbs.legL) playerObj.limbs.legL.visible = false;
+            if (playerObj.limbs.legR) playerObj.limbs.legR.visible = false;
+            if (playerObj.limbs.armL) playerObj.limbs.armL.visible = false;
+            if (playerObj.limbs.armR) playerObj.limbs.armR.visible = false;
+            if (playerObj.limbs.head) playerObj.limbs.head.visible = false;
+        }
+
+        // Apply Team Color
+        const teamColor = playerObj.teamColor || 0x2c3e50;
+        model.traverse((child) => {
+            if (child.isMesh && child.material) {
+                child.material = child.material.clone();
+                child.material.color.setHex(teamColor);
+                // Apply 30% tint of team color to preserve texture
+                child.material.color.setHex(0xffffff).lerp(new THREE.Color(teamColor), 0.3);
+
+                // Remove emissive to avoid washing out texture
+                child.material.emissive = new THREE.Color(0x000000);
+                child.material.emissiveIntensity = 0.0;
+
+                child.material.metalness = 0.5;
+                child.material.roughness = 0.5;
+            }
+        });
+
+        playerObj.mesh.add(model);
+        playerObj.knightModel = model;
+
+        // Setup Animation Mixer
+        const mixer = new THREE.AnimationMixer(model);
+        playerObj.knightMixer = mixer;
+        playerObj.knightAnimations = {};
+        playerObj.currentKnightAction = null;
+
+        // MAP ANIMATIONS EXACTLY LIKE LOCAL PLAYER
+        if (gltf.animations && gltf.animations.length > 0) {
+            console.log(`[ENEMY-LOAD] Animations found for ${playerObj.username}:`, gltf.animations.map(c => c.name));
+            gltf.animations.forEach((clip) => {
+                const name = clip.name.toLowerCase();
+                let action = null;
+
+                if (name.includes('walk') && !name.includes('block') || name.includes('wal')) {
+                    // Remove root motion for walk
+                    const tracks = clip.tracks.filter(t => !t.name.includes('.position') || (!t.name.toLowerCase().includes('hips') && !t.name.toLowerCase().includes('mixamorig')));
+                    const newClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+                    action = mixer.clipAction(newClip);
+                    action.setLoop(THREE.LoopRepeat);
+                    playerObj.knightAnimations.walk = action;
+                } else if (name.includes('run')) {
+                    const tracks = clip.tracks.filter(t => !t.name.includes('.position') || (!t.name.toLowerCase().includes('hips') && !t.name.toLowerCase().includes('mixamorig')));
+                    const newClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+                    action = mixer.clipAction(newClip);
+                    action.setLoop(THREE.LoopRepeat);
+                    playerObj.knightAnimations.run = action;
+                } else if (name.includes('idle') && !name.includes('block')) {
+                    action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopRepeat);
+                    playerObj.knightAnimations.idle = action;
+                } else if (name.includes('jump')) {
+                    // Remove root motion for jump (as requested)
+                    const tracks = clip.tracks.filter(t => !t.name.includes('.position') || (!t.name.toLowerCase().includes('hips') && !t.name.toLowerCase().includes('mixamorig')));
+                    const newClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+                    action = mixer.clipAction(newClip);
+                    action.setLoop(THREE.LoopOnce);
+                    action.clampWhenFinished = true;
+                    playerObj.knightAnimations.jump = action;
+                } else if (name.includes('attack') || name.includes('slash')) {
+                    // Use the first attack found or specific one if needed
+                    if (!playerObj.knightAnimations.attack) {
+                        action = mixer.clipAction(clip);
+                        action.setLoop(THREE.LoopOnce);
+                        action.clampWhenFinished = true;
+                        action.timeScale = 1.5; // Match local player speed
+                        playerObj.knightAnimations.attack = action;
+                    }
+                } else if (name.includes('spin') || name.includes('whirlwind')) {
+                    // Remove root motion
+                    const tracks = clip.tracks.filter(t => !t.name.includes('.position') || (!t.name.toLowerCase().includes('hips') && !t.name.toLowerCase().includes('mixamorig')));
+                    const newClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+                    action = mixer.clipAction(newClip);
+                    action.setLoop(THREE.LoopOnce);
+                    action.clampWhenFinished = true;
+                    action.timeScale = 1.5;
+                    playerObj.knightAnimations.whirlwind = action;
+                } else if (name.includes('powerup') || name.includes('roar') || name.includes('buff') || name.includes('shout')) {
+                    // Use original clip to match local player and avoid bugs
+                    action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopOnce);
+                    action.clampWhenFinished = true;
+                    playerObj.knightAnimations.powerup = action;
+                } else if (name.includes('strafe')) {
+                    // Remove root motion for strafe
+                    const tracks = clip.tracks.filter(t => !t.name.includes('.position') || (!t.name.toLowerCase().includes('hips') && !t.name.toLowerCase().includes('mixamorig')));
+                    const newClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+                    action = mixer.clipAction(newClip);
+                    action.setLoop(THREE.LoopRepeat);
+                    playerObj.knightAnimations.strafe = action;
+                } else if (name.includes('idle') && name.includes('block')) {
+                    action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopRepeat);
+                    playerObj.knightAnimations.blockIdle = action;
+                } else if (name.includes('block') || name.includes('shield')) {
+                    action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopRepeat);
+                    playerObj.knightAnimations.block = action;
+                }
+            });
+
+            // --- LAYERED ANIMATION SETUP FOR ENEMY ---
+            const upperBodyBones = [];
+            const lowerBodyBones = [];
+
+            model.traverse((node) => {
+                if (node.isBone) {
+                    const boneName = node.name.toLowerCase();
+                    if (boneName.includes('spine') || boneName.includes('chest') ||
+                        boneName.includes('neck') || boneName.includes('head') ||
+                        boneName.includes('shoulder') || boneName.includes('arm') ||
+                        boneName.includes('hand') || boneName.includes('finger') ||
+                        boneName.includes('clavicle')) {
+                        upperBodyBones.push(node);
+                    } else if (boneName.includes('hips') || boneName.includes('leg') ||
+                        boneName.includes('thigh') || boneName.includes('calf') ||
+                        boneName.includes('foot') || boneName.includes('toe')) {
+                        lowerBodyBones.push(node);
+                    }
+                }
+            });
+
+            // Create Layered Clips
+            // 1. Block Upper (from blockIdle if available, else block)
+            if (playerObj.knightAnimations.blockIdle && upperBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.blockIdle.getClip();
+                const upperClip = createLayeredClip(originalClip, upperBodyBones, 'blockIdle_upperBody');
+                playerObj.knightAnimations.blockUpper = mixer.clipAction(upperClip);
+                playerObj.knightAnimations.blockUpper.setLoop(THREE.LoopRepeat);
+                console.log(`[ENEMY-LOAD] Created blockUpper from blockIdle for ${playerObj.username}`);
+            } else if (playerObj.knightAnimations.block && upperBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.block.getClip();
+                const upperClip = createLayeredClip(originalClip, upperBodyBones, 'block_upperBody');
+                playerObj.knightAnimations.blockUpper = mixer.clipAction(upperClip);
+                playerObj.knightAnimations.blockUpper.setLoop(THREE.LoopRepeat);
+                console.log(`[ENEMY-LOAD] Created blockUpper from block for ${playerObj.username}`);
+            }
+
+            // 2. Strafe Lower
+            if (playerObj.knightAnimations.strafe && lowerBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.strafe.getClip();
+                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'strafe_lowerBody');
+                playerObj.knightAnimations.strafeLower = mixer.clipAction(lowerClip);
+                playerObj.knightAnimations.strafeLower.setLoop(THREE.LoopRepeat);
+                console.log(`[ENEMY-LOAD] Created strafeLower for ${playerObj.username}`);
+            } else {
+                console.warn(`[ENEMY-LOAD] Failed to create strafeLower for ${playerObj.username}. Strafe: ${!!playerObj.knightAnimations.strafe}, Bones: ${lowerBodyBones.length}`);
+            }
+
+            // 3. Walk/Run Lower (for Powerup layering)
+            if (playerObj.knightAnimations.walk && lowerBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.walk.getClip();
+                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'walk_lowerBody');
+                playerObj.knightAnimations.walkLower = mixer.clipAction(lowerClip);
+                playerObj.knightAnimations.walkLower.setLoop(THREE.LoopRepeat);
+                console.log(`[ENEMY-LOAD] Created walkLower for ${playerObj.username}`);
+            }
+            if (playerObj.knightAnimations.run && lowerBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.run.getClip();
+                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'run_lowerBody');
+                playerObj.knightAnimations.runLower = mixer.clipAction(lowerClip);
+                playerObj.knightAnimations.runLower.setLoop(THREE.LoopRepeat);
+                console.log(`[ENEMY-LOAD] Created runLower for ${playerObj.username}`);
+            }
+
+            // 4. Powerup Upper
+            if (playerObj.knightAnimations.powerup && upperBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.powerup.getClip();
+                const upperClip = createLayeredClip(originalClip, upperBodyBones, 'powerup_upperBody');
+                playerObj.knightAnimations.powerupUpper = mixer.clipAction(upperClip);
+                playerObj.knightAnimations.powerupUpper.setLoop(THREE.LoopOnce);
+                playerObj.knightAnimations.powerupUpper.clampWhenFinished = true;
+                console.log(`[ENEMY-LOAD] Created powerupUpper for ${playerObj.username}`);
+            }
+
+            if (playerObj.knightAnimations.walk && lowerBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.walk.getClip();
+                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'walk_lowerBody');
+                playerObj.knightAnimations.walkLower = mixer.clipAction(lowerClip);
+                playerObj.knightAnimations.walkLower.setLoop(THREE.LoopRepeat);
+            }
+
+            if (playerObj.knightAnimations.run && lowerBodyBones.length > 0) {
+                const originalClip = playerObj.knightAnimations.run.getClip();
+                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'run_lowerBody');
+                playerObj.knightAnimations.runLower = mixer.clipAction(lowerClip);
+                playerObj.knightAnimations.runLower.setLoop(THREE.LoopRepeat);
+            }
+        }
+
+        // Start Idle
+        if (playerObj.knightAnimations.idle) {
+            playerObj.knightAnimations.idle.play();
+            playerObj.currentKnightAction = playerObj.knightAnimations.idle;
+        }
+
+        console.log(`[ENEMY] Knight model loaded for ${playerObj.username}`);
+    });
+}
+
+function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceRestart = false) {
+    if (!playerObj.knightAnimations) {
+        // console.warn(`[ANIM-DEBUG] No knightAnimations for ${playerObj.username}`);
+        return false;
+    }
+    if (!playerObj.knightAnimations[name]) {
+        console.warn(`[ANIM-DEBUG] Animation '${name}' not found for ${playerObj.username}. Trying fallbacks.`);
+
+        // FALLBACK CHAIN
+        let fallbackName = 'idle';
+        if (name === 'powerup') fallbackName = 'attack'; // If powerup missing, try attack
+        else if (name === 'whirlwind') fallbackName = 'attack'; // If whirlwind missing, try attack
+        else if (name === 'jump') fallbackName = 'idle'; // If jump missing, use idle
+
+        // Try fallback
+        if (playerObj.knightAnimations[fallbackName]) {
+            console.log(`[ANIM-DEBUG] Using fallback '${fallbackName}' for '${name}'`);
+            // Recursive call with fallback, but ensure we don't loop infinitely
+            if (fallbackName !== name) {
+                return playEnemyKnightAnimation(playerObj, fallbackName, isOneShot);
+            }
+        }
+
+        // FINAL RESORT: FORCE IDLE
+        if (playerObj.knightAnimations.idle) {
+            const idleAction = playerObj.knightAnimations.idle;
+            if (playerObj.currentKnightAction !== idleAction) {
+                if (playerObj.currentKnightAction) playerObj.currentKnightAction.fadeOut(0.2);
+                idleAction.reset();
+                idleAction.fadeIn(0.2);
+                idleAction.play();
+                playerObj.currentKnightAction = idleAction;
+            }
+        }
+        return false;
+    }
+
+    // console.log(`[ANIM-DEBUG] Playing '${name}' for ${playerObj.username} (OneShot: ${isOneShot})`);
+
+    const newAction = playerObj.knightAnimations[name];
+
+    // Prevent restarting if already playing (unless forced)
+    // This fixes the T-pose/glitch when 'jump' state is sent continuously
+    if (playerObj.currentKnightAction === newAction && newAction.isRunning() && !forceRestart) return true;
+
+    if (playerObj.currentKnightAction && playerObj.currentKnightAction !== newAction) {
+        playerObj.currentKnightAction.fadeOut(0.2);
+    }
+
+    newAction.reset();
+    newAction.fadeIn(0.2);
+    newAction.play();
+    playerObj.currentKnightAction = newAction;
+
+    if (isOneShot) {
+        playerObj.isPerformingOneShot = true;
+        const onFinished = (e) => {
+            if (e.action === newAction) {
+                playerObj.knightMixer.removeEventListener('finished', onFinished);
+                playerObj.isPerformingOneShot = false;
+                // Fallback to idle will happen in update loop
+            }
+        };
+        playerObj.knightMixer.addEventListener('finished', onFinished);
+    } else {
+        playerObj.isPerformingOneShot = false;
+    }
+    return true;
+}
+
+function updateOtherPlayersAnimations(delta) {
+    Object.values(otherPlayers).forEach(p => {
+        if (p.knightMixer && p.knightModel && p.knightModel.visible) {
+            p.knightMixer.update(delta);
+
+            // Logic to update state based on p.mesh.userData
+            const state = p.mesh.userData.animState; // idle, walk, run
+            const isAttacking = p.mesh.userData.isAttacking;
+            const isWhirlwinding = p.mesh.userData.isWhirlwinding;
+            const isBlocking = p.mesh.userData.isBlocking;
+
+            // Handle Powerup Timer locally since it's not in the main loop
+            if (p.mesh.userData.isPoweringUp) {
+                p.mesh.userData.powerupTimer = (p.mesh.userData.powerupTimer || 0) + delta * 15;
+                if (p.mesh.userData.powerupTimer > Math.PI) { // Approx 1s duration
+                    p.mesh.userData.isPoweringUp = false;
+                    p.mesh.userData.powerupTimer = 0;
+                }
+            }
+            const isPoweringUp = p.mesh.userData.isPoweringUp;
+
+            // Priority: Whirlwind > Block > Powerup > Attack > Movement > Idle
+            // REORDERED: Block is now higher priority than Powerup/Attack/OneShot
+
+            // 1. Whirlwind (High Priority State)
+            if (isWhirlwinding) {
+                if (playEnemyKnightAnimation(p, 'whirlwind', true)) return;
+            }
+
+            // 2. Blocking (High Priority - Interrupts Powerup/Attack)
+            if (isBlocking) {
+                // Stop conflicting one-shot animations (Powerup, Attack)
+                if (p.knightAnimations.powerup && p.knightAnimations.powerup.isRunning()) p.knightAnimations.powerup.stop();
+                if (p.knightAnimations.powerupUpper && p.knightAnimations.powerupUpper.isRunning()) p.knightAnimations.powerupUpper.stop();
+                if (p.knightAnimations.attack && p.knightAnimations.attack.isRunning()) p.knightAnimations.attack.stop();
+
+                // Force exit one-shot mode
+                p.isPerformingOneShot = false;
+
+                // Layered Blocking Logic (Upper Block + Lower Strafe)
+                // console.log(`[ANIM-DEBUG] Blocking check for ${p.username}: BlockUpper=${!!p.knightAnimations.blockUpper}, StrafeLower=${!!p.knightAnimations.strafeLower}, State=${state}`);
+
+                if (p.knightAnimations.blockUpper && p.knightAnimations.strafeLower && (state === 'run' || state === 'walk')) {
+                    // console.log(`[ANIM-DEBUG] ${p.username} is blocking and moving. Activating layered animations.`);
+
+                    // Stop conflicting full-body animations
+                    if (p.knightAnimations.blockIdle && p.knightAnimations.blockIdle.isRunning()) p.knightAnimations.blockIdle.fadeOut(0.2);
+                    if (p.knightAnimations.block && p.knightAnimations.block.isRunning()) p.knightAnimations.block.fadeOut(0.2);
+                    if (p.knightAnimations.walk && p.knightAnimations.walk.isRunning()) p.knightAnimations.walk.fadeOut(0.2);
+                    if (p.knightAnimations.run && p.knightAnimations.run.isRunning()) p.knightAnimations.run.fadeOut(0.2);
+                    if (p.knightAnimations.strafe && p.knightAnimations.strafe.isRunning()) p.knightAnimations.strafe.fadeOut(0.2);
+
+                    // Activate Upper Layer
+                    if (!p.knightAnimations.blockUpper.isRunning()) {
+                        p.knightAnimations.blockUpper.reset();
+                        p.knightAnimations.blockUpper.play();
+                    }
+                    p.knightAnimations.blockUpper.setEffectiveWeight(2.0);
+
+                    // Activate Lower Layer
+                    if (!p.knightAnimations.strafeLower.isRunning()) {
+                        p.knightAnimations.strafeLower.reset();
+                        p.knightAnimations.strafeLower.play();
+                    }
+                    p.knightAnimations.strafeLower.setEffectiveTimeScale(1.0); // Ensure it moves
+                    p.knightAnimations.strafeLower.setEffectiveWeight(1.5);
+
+                    p.currentKnightAction = p.knightAnimations.blockUpper;
+                    return;
+
+                } else {
+                    // Not moving or missing layers -> Full Block
+                    // Stop layers if running
+                    if (p.knightAnimations.blockUpper && p.knightAnimations.blockUpper.isRunning()) p.knightAnimations.blockUpper.fadeOut(0.2);
+
+                    // Freeze and Fade lower body
+                    if (p.knightAnimations.strafeLower && p.knightAnimations.strafeLower.isRunning()) {
+                        p.knightAnimations.strafeLower.setEffectiveTimeScale(0);
+                        p.knightAnimations.strafeLower.fadeOut(0.2);
+                    }
+                    if (p.knightAnimations.walkLower && p.knightAnimations.walkLower.isRunning()) {
+                        p.knightAnimations.walkLower.setEffectiveTimeScale(0);
+                        p.knightAnimations.walkLower.fadeOut(0.2);
+                    }
+                    if (p.knightAnimations.runLower && p.knightAnimations.runLower.isRunning()) {
+                        p.knightAnimations.runLower.setEffectiveTimeScale(0);
+                        p.knightAnimations.runLower.fadeOut(0.2);
+                    }
+
+                    // Prefer blockIdle if available
+                    if (p.knightAnimations.blockIdle) {
+                        // SYNC: If blockUpper was running, start blockIdle at the same time
+                        let startTime = 0;
+                        if (p.knightAnimations.blockUpper && p.knightAnimations.blockUpper.isRunning()) {
+                            startTime = p.knightAnimations.blockUpper.time;
+                        }
+
+                        playEnemyKnightAnimation(p, 'blockIdle');
+
+                        if (startTime > 0 && p.knightAnimations.blockIdle.isRunning()) {
+                            p.knightAnimations.blockIdle.time = startTime;
+                        }
+                    } else {
+                        playEnemyKnightAnimation(p, 'block');
+                    }
+                    return;
+                }
+            }
+
+            // 3. Locked One-Shot Animations (Attack, Powerup, Jump landing)
+            // Checked AFTER blocking, so blocking can interrupt them
+            if (p.isPerformingOneShot) {
+                return; // Let animation finish
+            }
+
+            // 4. Trigger New Actions
+            if (isPoweringUp) {
+                // Layered Powerup Logic (Upper Powerup + Lower Run/Walk)
+                if (p.knightAnimations.powerupUpper && (state === 'run' || state === 'walk')) {
+                    // console.log(`[ANIM-DEBUG] ${p.username} is powering up and moving. Activating layered animations.`);
+
+                    // Stop conflicting full-body animations
+                    if (p.knightAnimations.powerup && p.knightAnimations.powerup.isRunning()) p.knightAnimations.powerup.stop();
+                    if (p.knightAnimations.walk && p.knightAnimations.walk.isRunning()) p.knightAnimations.walk.fadeOut(0.2);
+                    if (p.knightAnimations.run && p.knightAnimations.run.isRunning()) p.knightAnimations.run.fadeOut(0.2);
+
+                    // Activate Upper Layer
+                    if (!p.knightAnimations.powerupUpper.isRunning()) {
+                        p.knightAnimations.powerupUpper.reset();
+                        p.knightAnimations.powerupUpper.play();
+                    }
+                    p.knightAnimations.powerupUpper.setEffectiveWeight(2.0);
+
+                    // Activate Lower Layer
+                    let lowerAction = (state === 'run') ? p.knightAnimations.runLower : p.knightAnimations.walkLower;
+                    if (lowerAction) {
+                        if (!lowerAction.isRunning()) {
+                            lowerAction.reset();
+                            lowerAction.play();
+                        }
+                        lowerAction.setEffectiveTimeScale(1.0);
+                        lowerAction.setEffectiveWeight(1.5);
+                    }
+                    p.currentKnightAction = p.knightAnimations.powerupUpper;
+                    return;
+                } else {
+                    // Not moving or missing layers -> Full Powerup
+                    if (p.knightAnimations.walkLower && p.knightAnimations.walkLower.isRunning()) {
+                        p.knightAnimations.walkLower.setEffectiveTimeScale(0);
+                        p.knightAnimations.walkLower.fadeOut(0.2);
+                    }
+                    if (p.knightAnimations.runLower && p.knightAnimations.runLower.isRunning()) {
+                        p.knightAnimations.runLower.setEffectiveTimeScale(0);
+                        p.knightAnimations.runLower.fadeOut(0.2);
+                    }
+                    if (playEnemyKnightAnimation(p, 'powerup', true)) return;
+                }
+            }
+
+            if (isAttacking) {
+                if (playEnemyKnightAnimation(p, 'attack', true)) return;
+            }
+
+            // 5. Movement States (if not blocking/attacking/powering up) else {
+            // Stop layers if running
+            if (p.knightAnimations.blockUpper && p.knightAnimations.blockUpper.isRunning()) p.knightAnimations.blockUpper.fadeOut(0.2);
+            // Freeze and Fade lower body
+            if (p.knightAnimations.strafeLower && p.knightAnimations.strafeLower.isRunning()) {
+                p.knightAnimations.strafeLower.setEffectiveTimeScale(0);
+                p.knightAnimations.strafeLower.fadeOut(0.2);
+            }
+            if (p.knightAnimations.walkLower && p.knightAnimations.walkLower.isRunning()) {
+                p.knightAnimations.walkLower.setEffectiveTimeScale(0);
+                p.knightAnimations.walkLower.fadeOut(0.2);
+            }
+            if (p.knightAnimations.runLower && p.knightAnimations.runLower.isRunning()) {
+                p.knightAnimations.runLower.setEffectiveTimeScale(0);
+                p.knightAnimations.runLower.fadeOut(0.2);
+            }
+
+            // 4. Movement States
+            if (state === 'jump') {
+                playEnemyKnightAnimation(p, 'jump', true);
+            }
+            else if (state === 'run') playEnemyKnightAnimation(p, 'run');
+            else if (state === 'walk') playEnemyKnightAnimation(p, 'walk');
+            else playEnemyKnightAnimation(p, 'idle');
+        }
+
+        // SAFETY CHECK: If no action is running, force IDLE
+        if (!p.currentKnightAction || !p.currentKnightAction.isRunning()) {
+            playEnemyKnightAnimation(p, 'idle');
+        }
+    });
+}
+
+// Expose to window
+window.loadEnemyKnightModel = loadEnemyKnightModel;
+window.playEnemyKnightAnimation = playEnemyKnightAnimation;
+window.updateOtherPlayersAnimations = updateOtherPlayersAnimations;
 

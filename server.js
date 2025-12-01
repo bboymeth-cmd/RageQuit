@@ -4,9 +4,9 @@ const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, {
-  cors: { origin: "*" },
-  pingTimeout: 5000,
-  pingInterval: 10000
+    cors: { origin: "*" },
+    pingTimeout: 5000,
+    pingInterval: 10000
 });
 const path = require('path');
 
@@ -27,13 +27,13 @@ function distance3D(pos1, pos2) {
 function validateHit(shooterId, targetId, hitPosition) {
     const shooter = players[shooterId];
     const target = players[targetId];
-    
+
     if (!shooter || !target || target.isDead) return false;
-    
+
     // Verifica che il target sia abbastanza vicino alla posizione dell'hit
     const dist = distance3D(target.position, hitPosition);
-    const maxHitDistance = 10; // Tolleranza massima per lag
-    
+    const maxHitDistance = 50; // Increased tolerance for lag/AoE
+
     return dist <= maxHitDistance;
 }
 
@@ -42,11 +42,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Gestisci favicon e altri asset mancanti
 app.get('/favicon.ico', (req, res) => {
-  res.status(204).send(); // No Content
+    res.status(204).send(); // No Content
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // --- LOGICA MULTIPLAYER ORIGINALE ---
@@ -58,7 +58,7 @@ io.on('connection', (socket) => {
     socket.on('joinGame', (userData) => {
         // Reset completo del player (rimuove flag isDead)
         if (players[socket.id]) delete players[socket.id];
-        
+
         if (Object.keys(players).length >= 10) {
             socket.emit('serverMsg', 'Server pieno!');
             return;
@@ -87,23 +87,23 @@ io.on('connection', (socket) => {
         socket.emit('currentPlayers', players);
         console.log(`TRACE: broadcasting newPlayer from ${socket.id} -> id=${players[socket.id].id}`);
         socket.broadcast.emit('newPlayer', players[socket.id]);
-        
+
         // Broadcast team counts
         broadcastTeamCounts();
     });
-    
+
     socket.on('requestTeamCounts', () => {
         const counts = getTeamCounts();
         socket.emit('teamCounts', counts);
     });
-    
+
     // Ping handler
     socket.on('ping', (timestamp) => {
         socket.emit('pong', timestamp);
     });
-    
+
     function getTeamCounts() {
-        const counts = {red: 0, black: 0, green: 0, purple: 0};
+        const counts = { red: 0, black: 0, green: 0, purple: 0 };
         Object.values(players).forEach(p => {
             if (p.team && counts[p.team] !== undefined) {
                 counts[p.team]++;
@@ -111,23 +111,23 @@ io.on('connection', (socket) => {
         });
         return counts;
     }
-    
+
     function broadcastTeamCounts() {
         const counts = getTeamCounts();
         io.emit('teamCounts', counts);
     }
-    
+
     socket.on('requestPosition', () => {
         socket.broadcast.emit('forcePositionUpdate');
     });
 
     socket.on('updateUsername', (username) => {
-        if(players[socket.id]) {
+        if (players[socket.id]) {
             players[socket.id].username = username;
             io.emit('updateUsername', { id: socket.id, username: username });
         }
     });
-    
+
     socket.on('chatMessage', (data) => {
         if (players[socket.id]) {
             // Broadcast messaggio a tutti
@@ -140,7 +140,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('updateTeamColor', (data) => {
-        if(players[socket.id]) {
+        if (players[socket.id]) {
             players[socket.id].teamColor = data.teamColor;
             io.emit('playerTeamColorChanged', { id: socket.id, teamColor: data.teamColor });
         }
@@ -155,7 +155,7 @@ io.on('connection', (socket) => {
             players[socket.id].animState = data.animState;
             players[socket.id].weaponMode = data.weaponMode;
             players[socket.id].lastUpdate = now; // Timestamp per lag compensation
-            
+
             socket.broadcast.emit('playerMoved', {
                 id: socket.id,
                 timestamp: now, // Invia timestamp server
@@ -194,11 +194,11 @@ io.on('connection', (socket) => {
             }
             // Emit to the target player so they can execute the push effect
             io.to(targetId).emit('playerPushed', {
-                forceY: pushData.forceY, 
-                forceVec: pushData.forceVec, 
+                forceY: pushData.forceY,
+                forceVec: pushData.forceVec,
                 pushOrigin: pushData.pushOrigin
             });
-            
+
             // Emit health update and damage effect to all players
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
             if (actualDamage > 0) {
@@ -209,8 +209,8 @@ io.on('connection', (socket) => {
                 players[targetId].isDead = true;
                 console.log(`[SERVER] Player ${targetId} morto (PUSH) - broadcasting a tutti`);
                 // Broadcast morte a TUTTI i client immediatamente
-                io.emit('playerDied', { 
-                    id: targetId, 
+                io.emit('playerDied', {
+                    id: targetId,
                     killerId: socket.id,
                     position: players[targetId].position
                 });
@@ -220,14 +220,14 @@ io.on('connection', (socket) => {
 
     socket.on('playerHit', (dmgData) => {
         const targetId = dmgData.targetId;
-        
+
         // Verifica che il target esista e non sia già morto
         if (!players[targetId] || players[targetId].isDead || players[targetId].hp <= 0) {
             console.log(`[HIT REJECTED] ${socket.id} -> ${targetId} (target morto o inesistente)`);
             socket.emit('hitRejected', { targetId: targetId });
             return;
         }
-        
+
         // VALIDAZIONE SERVER-SIDE DELL'HIT
         if (!validateHit(socket.id, targetId, dmgData.hitPosition || players[targetId]?.position)) {
             console.log(`[HIT REJECTED] ${socket.id} -> ${targetId} (posizione non valida)`);
@@ -235,19 +235,19 @@ io.on('connection', (socket) => {
             socket.emit('hitRejected', { targetId: targetId });
             return;
         }
-        
+
         if (players[targetId]) {
             const actualDamage = dmgData.damage;
             players[targetId].hp -= actualDamage;
-            
+
             // Clamp HP a 0 per evitare valori negativi
             players[targetId].hp = Math.max(0, players[targetId].hp);
-            
+
             console.log(`[HIT VALIDATED] ${socket.id} -> ${targetId} (${actualDamage} dmg, hp: ${players[targetId].hp})`);
-            
+
             // Send health update to all
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
-            
+
             // Send specific damage response to the target for local effects (like screen flash)
             io.to(targetId).emit('playerHitResponse', { damage: actualDamage });
 
@@ -255,33 +255,33 @@ io.on('connection', (socket) => {
             if (actualDamage > 0) {
                 io.emit('remoteDamageTaken', { id: targetId });
             }
-            
+
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {
                 players[targetId].isDead = true;
                 console.log(`[SERVER] Player ${targetId} morto (HIT) - broadcasting a tutti`);
                 // Broadcast morte a TUTTI i client immediatamente
-                io.emit('playerDied', { 
-                    id: targetId, 
+                io.emit('playerDied', {
+                    id: targetId,
                     killerId: socket.id,
                     position: players[targetId].position
                 });
             }
         }
     });
-    
+
     socket.on('playerHealed', (healData) => {
         if (players[socket.id]) {
             players[socket.id].hp = Math.min(players[socket.id].maxHp, players[socket.id].hp + healData.amount);
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
         }
     });
-    
+
     socket.on('playerRespawned', (data) => {
         if (players[socket.id]) {
             // Reset completo stato player sul server
             players[socket.id].hp = players[socket.id].maxHp;
             players[socket.id].isDead = false;
-            
+
             // Aggiorna posizione se fornita
             if (data && data.position) {
                 players[socket.id].position = data.position;
@@ -289,14 +289,14 @@ io.on('connection', (socket) => {
             if (data && data.rotation) {
                 players[socket.id].rotation = data.rotation;
             }
-            
+
             console.log(`[RESPAWN] ${socket.id} respawnato - team: ${players[socket.id].team}, teamColor: ${players[socket.id].teamColor}`);
-            
+
             // Notifica tutti i client dello stato aggiornato con dati completi
             io.emit('updateHealth', { id: socket.id, hp: players[socket.id].hp });
-            
+
             // Emit multipli per garantire sincronizzazione - INCLUDE TEAM E TEAMCOLOR
-            io.emit('playerRespawned', { 
+            io.emit('playerRespawned', {
                 id: socket.id,
                 hp: players[socket.id].hp,
                 position: players[socket.id].position,
@@ -306,10 +306,10 @@ io.on('connection', (socket) => {
                 username: players[socket.id].username,
                 timestamp: Date.now() // Timestamp per debug
             });
-            
+
             // Broadcast newPlayer COMPLETO per assicurare visibilità (importante per respawn ritardati)
             socket.broadcast.emit('newPlayer', players[socket.id]);
-            
+
             // Doppio check: forza aggiornamento posizione
             setTimeout(() => {
                 if (players[socket.id] && !players[socket.id].isDead) {

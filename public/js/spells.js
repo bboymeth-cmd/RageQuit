@@ -86,7 +86,6 @@ function performConversion(type) {
         playKnightAnimation('powerup', true);
     }
 
-    playSound('heal');
     activeConversions.push({ type: type, duration: 5.0, nextTick: 1.0 });
     lastConversionTime = now;
     updateUI();
@@ -94,9 +93,25 @@ function performConversion(type) {
     document.getElementById(slotId).classList.add('channeling');
     setTimeout(() => document.getElementById(slotId).classList.remove('channeling'), 5000);
 
-    let color = (type === 1) ? 0xff0000 : (type === 2) ? 0x0000ff : 0xffff00;
+    // Visual effects
+    let color = 0xffffff;
+    let effectType = 'conversion'; // Renamed to avoid conflict with function parameter 'type'
+    if (type === 1) { color = 0xff0000; effectType = 'stamina'; } // Stamina -> HP (Red)
+    else if (type === 2) { color = 0x0000ff; effectType = 'mana'; } // HP -> Mana (Blue)
+    else if (type === 3) { color = 0xffff00; effectType = 'stamina_gain'; } // Mana -> Stamina (Yellow)
+
     spawnGlowEffect(color);
-    if (socket) socket.emit('playerEffect', { type: (type === 1 ? 'heal' : (type === 2 ? 'mana' : 'stamina')) });
+    playSound('heal'); // Use heal sound for conversion too
+
+    // Trigger animation locally
+    if (weaponMode === 'melee' && knightAnimations.powerup) {
+        playKnightAnimation('powerup', true);
+    }
+
+    // Notify server for other players
+    if (socket && socket.connected) {
+        socket.emit('remoteEffect', { type: effectType });
+    }
 }
 
 function updateConversions(delta) {
@@ -136,17 +151,22 @@ function performHeal() {
     playerStats.mana -= SETTINGS.healCost;
     playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + SETTINGS.healAmount);
 
-    // Trigger powerup animation in melee mode
+    // Play sound and effect locally
+    playSound('heal');
+    spawnGlowEffect(0x00ff00);
+
+    // Trigger animation locally
     if (weaponMode === 'melee' && knightAnimations.powerup) {
         playKnightAnimation('powerup', true);
     }
 
-    if (socket) {
+    // Notify server for other players
+    if (socket && socket.connected) {
         socket.emit('playerHealed', { amount: SETTINGS.healAmount });
-        socket.emit('playerEffect', { type: 'heal' });
+        socket.emit('remoteEffect', { type: 'heal' });
     }
     lastHealTime = now; addToLog(`Curato di ${SETTINGS.healAmount} HP`, "heal"); createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0)), `+${SETTINGS.healAmount}`, '#00ff00');
-    spawnGlowEffect(0x00ff00); flashScreen('green'); playSound('heal'); updateUI();
+    flashScreen('green'); updateUI();
 }
 
 function performWhirlwind() {
@@ -372,7 +392,7 @@ function updateProjectiles(delta) {
                 else if (p.userData.type === 5) dmg = SETTINGS.arrowDmg;
 
                 // Controlla se il bersaglio è un giocatore o il mostro IA
-                const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key] === hitTarget);
+                const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key].mesh === hitTarget);
                 const isMonsterTarget = hitTarget === aiMonster?.mesh;
 
                 if (isMonsterTarget) {
