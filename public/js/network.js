@@ -265,7 +265,10 @@ function addOtherPlayer(info) {
 
     // Placeholder base (semplice box) + strutture richieste dal codice esistente
     const mesh = new THREE.Group();
-    const placeholder = new THREE.Mesh(new THREE.BoxGeometry(5,10,5), new THREE.MeshStandardMaterial({color: info.teamColor || 0xaa3333}));
+    const placeholder = new THREE.Mesh(
+        new THREE.BoxGeometry(5,10,5),
+        new THREE.MeshBasicMaterial({color: info.teamColor || 0xaa3333}) // Basic per visibilità anche senza luci
+    );
     placeholder.position.y = 5; mesh.add(placeholder);
     // Limbs placeholder
     const armL = new THREE.Group(); const armR = new THREE.Group(); const legL = new THREE.Group(); const legR = new THREE.Group();
@@ -299,7 +302,9 @@ function addOtherPlayer(info) {
         if (!window.knightSource || !otherPlayers[info.id]) return false;
         const base = window.knightSource;
         const teamColor = info.teamColor || 0x2c3e50;
-        const knightModel = base.scene.clone(true);
+        const knightModel = (THREE.SkeletonUtils && THREE.SkeletonUtils.clone)
+            ? THREE.SkeletonUtils.clone(base.scene)
+            : base.scene.clone(true);
         knightModel.scale.set(10,10,10);
         knightModel.rotation.y = 0;
         knightModel.traverse(c => { if (c.isMesh && c.material) { c.material = c.material.clone(); c.material.color.setHex(teamColor); c.castShadow=true; c.receiveShadow=true; }});

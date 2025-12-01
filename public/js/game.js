@@ -782,11 +782,6 @@ let socket = null;
             playerStats.isDead = false;
             playerStats.isFalling = false;
             
-                        // Notifica il server del respawn per sincronizzare gli HP
-                        if (socket && socket.connected) {
-                            socket.emit('playerRespawn');
-                        }
-            
             // Determina la posizione di respawn in base alla modalità
             let spawnPos = getSpawnPosition();
             playerMesh.position.copy(spawnPos);
@@ -1202,7 +1197,7 @@ let socket = null;
                     updateConversions(delta); updateFloatingTexts(delta);
                     updateSwordAnimation(delta);
                     
-                    // Update Knight mixer e animazioni
+                    // Update Knight mixer e animazioni (locale)
                     if (knightMixer && weaponMode === 'melee') {
                         knightMixer.update(delta);
                         if (typeof updateKnightAnimation === 'function') {
@@ -1210,15 +1205,14 @@ let socket = null;
                         }
                     }
 
-                    // Aggiorna mixer animazioni degli altri giocatori (remote)
-                    try {
-                        for (const id in otherPlayers) {
-                            const op = otherPlayers[id];
-                            if (op && op.mixer) {
-                                op.mixer.update(delta);
+                    // Update mixer dei giocatori remoti (se presente)
+                    if (typeof otherPlayers === 'object') {
+                        Object.values(otherPlayers).forEach(p => {
+                            if (p && p.mixer) {
+                                p.mixer.update(delta);
                             }
-                        }
-                    } catch(e) { /* evita blocchi se qualche mixer manca */ }
+                        });
+                    }
                     
                     // Aggiorna il mostro IA se in modalità PvE
                     if (isPvEMode && aiMonster) {
