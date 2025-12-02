@@ -242,26 +242,20 @@ function initMultiplayer() {
         });
 
         socket.on('playerHitResponse', (data) => {
-            const diff = -data.damage;
-            playerStats.hp = Math.max(0, playerStats.hp + diff);
-            updateUI();
-            if (diff < 0) {
+            // CRITICAL FIX: NON modificare HP qui! Il server invia già updateHealth con HP corretto.
+            // playerHitResponse serve SOLO per feedback visivo locale (flash screen, particles, etc)
+            
+            console.log(`[PLAYER HIT] Ricevuto danno: ${data.damage} - HP NON modificato localmente, attendo updateHealth dal server`);
+            
+            // Effetti visivi del danno
+            if (data.damage > 0) {
                 flashScreen('red');
+                // Opzionale: mostra particelle di sangue
+                spawnParticles(playerMesh.position, 0xff0000, 5, 20, 0.5, false);
             }
-            // Controlla se il player è morto
-            if (playerStats.hp <= 0 && !playerStats.isDead) {
-                playerStats.isDead = true;
-                playerStats.hp = 0; // Forza HP a 0
-                // Ferma tutte le conversioni attive
-                if (typeof activeConversions !== 'undefined') {
-                    activeConversions.length = 0;
-                }
-                document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Premi RESPAWN</span>";
-                document.getElementById('message').style.display = "block";
-                document.exitPointerLock();
-                spawnParticles(playerMesh.position, 0xff0000, 50, 50, 1.0, true);
-                playSound('death');
-            }
+            
+            // NOTE: La morte viene gestita in updateHealth quando HP <= 0
+            // Non controlliamo playerStats.hp <= 0 qui perché non abbiamo ancora l'HP aggiornato dal server
         });
 
         socket.on('enemyAttacked', (data) => {
@@ -321,9 +315,25 @@ function initMultiplayer() {
 
         socket.on('updateHealth', (data) => {
             if (data.id === myId) {
-                playerStats.hp = data.hp; updateUI();
+                // FIX: Il server è la fonte di verità per l'HP
+                playerStats.hp = data.hp;
+                updateUI();
+                console.log(`[HP SYNC] Il mio HP aggiornato dal server: ${data.hp}`);
+                
+                // CRITICAL: Se HP = 0, aspetta playerDied dal server (non gestiamo morte qui)
+                // playerDied arriverà subito dopo e gestirà animazione/respawn
             } else if (otherPlayers[data.id]) {
+                // FIX: Inizializza maxHp se non esiste
+                if (!otherPlayers[data.id].maxHp) otherPlayers[data.id].maxHp = 100;
+                
+                // CRITICAL: Salva HP vecchio PRIMA di aggiornare per logging
+                const oldHp = otherPlayers[data.id].hp || 100;
+                const damage = oldHp - data.hp;
+                
+                // Aggiorna HP
+                otherPlayers[data.id].hp = data.hp;
                 updateEnemyHealthBar(otherPlayers[data.id], data.hp);
+                console.log(`[HP SYNC] HP di ${otherPlayers[data.id].username}: ${oldHp} → ${data.hp} (danno: ${damage})`);
             }
         });
 
@@ -338,6 +348,14 @@ function initMultiplayer() {
                 // Reset completo stato del player respawnato
                 otherPlayers[data.id].mesh.userData.isDead = false;
                 otherPlayers[data.id].mesh.visible = true;
+                
+                // FIX: Ferma animazione death e torna a idle
+                if (otherPlayers[data.id].knightAnimations && otherPlayers[data.id].knightAnimations.death) {
+                    otherPlayers[data.id].knightAnimations.death.stop();
+                }
+                if (typeof playEnemyKnightAnimation === 'function') {
+                    playEnemyKnightAnimation(otherPlayers[data.id], 'idle', false);
+                }
 
                 // CRITICAL: Aggiorna team e teamColor per evitare perdita dati
                 if (data.team !== undefined) {
@@ -362,8 +380,10 @@ function initMultiplayer() {
                     otherPlayers[data.id].mesh.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
                 }
 
-                // Aggiorna barra HP a piena
-                updateEnemyHealthBar(otherPlayers[data.id], data.hp || 100);
+                // Reset HP a pieno al respawn
+                otherPlayers[data.id].hp = data.hp || 100;
+                otherPlayers[data.id].maxHp = 100;
+                updateEnemyHealthBar(otherPlayers[data.id], otherPlayers[data.id].hp);
 
                 // Forza visibilità mesh principale e tutti i figli
                 otherPlayers[data.id].mesh.traverse((child) => {
@@ -401,7 +421,18 @@ function initMultiplayer() {
                 document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Respawn in 3 secondi...</span>";
                 document.getElementById('message').style.display = "block"; document.exitPointerLock();
                 spawnParticles(playerMesh.position, 0xff0000, 50, 50, 1.0, true);
-                playerMesh.visible = false;
+                
+                // ANIMAZIONE DEATH per giocatore locale
+                if (typeof playKnightAnimation === 'function' && knightModel && knightModel.visible) {
+                    playKnightAnimation('death', true);
+                    // Nascondi dopo animazione (circa 2 secondi)
+                    setTimeout(() => {
+                        if (playerStats.isDead) playerMesh.visible = false;
+                    }, 2000);
+                } else {
+                    playerMesh.visible = false;
+                }
+                
                 console.log('[CLIENT] Io sono morto - respawn automatico in 3 secondi');
 
                 // RESPAWN AUTOMATICO dopo 3 secondi
@@ -412,11 +443,29 @@ function initMultiplayer() {
                     }
                 }, 3000);
             } else if (otherPlayers[data.id]) {
+                // CRITICAL: Setta HP a 0 IMMEDIATAMENTE
+                otherPlayers[data.id].hp = 0;
                 otherPlayers[data.id].mesh.userData.isDead = true;
-                otherPlayers[data.id].mesh.visible = false; // Nascondi immediatamente il corpo
+                updateEnemyHealthBar(otherPlayers[data.id], 0);
+                
                 addToLog(otherPlayers[data.id].username + " eliminato!", "kill");
                 spawnParticles(otherPlayers[data.id].mesh.position, 0xff0000, 50, 50, 1.0, true);
-                console.log(`[CLIENT] Player ${data.id} morto - mesh nascosto immediatamente per tutti`);
+                
+                console.log(`[DEATH] Player ${data.id} morto - HP settato a 0, isDead=true`);
+                
+                // ANIMAZIONE DEATH per nemico
+                if (typeof playEnemyKnightAnimation === 'function' && otherPlayers[data.id].knightModel) {
+                    playEnemyKnightAnimation(otherPlayers[data.id], 'death', true);
+                    // Nascondi dopo animazione
+                    setTimeout(() => {
+                        if (otherPlayers[data.id] && otherPlayers[data.id].mesh.userData.isDead) {
+                            otherPlayers[data.id].mesh.visible = false;
+                        }
+                    }, 2000);
+                } else {
+                    otherPlayers[data.id].mesh.visible = false;
+                }
+                
                 // Non rimuovere il giocatore - sarà rimostrato quando respawna
             }
 
@@ -553,7 +602,10 @@ function addOtherPlayer(info) {
         },
         weaponMeshes: { staff: staff, sword: swordGroup, shield: shield, bow: bowGroup },
         isAttacking: false, attackTimer: 0, isWhirlwinding: false, isDead: info.isDead || false,
-        lastStepPos: new THREE.Vector3()
+        lastStepPos: new THREE.Vector3(),
+        // FIX: Inizializza sempre hp e maxHp per evitare bug primo colpo
+        hp: info.hp || 100,
+        maxHp: 100
     };
 
     // HIDE LOW POLY PARTS IMMEDIATELY (We use Knight model always)
@@ -590,7 +642,26 @@ function createPlayerLabel(name) {
 
 function updateEnemyHealthBar(playerObj, hp) {
     if (playerObj && playerObj.mesh.userData.hpBar) {
-        const scale = Math.max(0, hp / 100);
+        // FIX: Assicura che hp sia valido e usa maxHp corretto
+        if (!playerObj.hp && hp !== undefined) {
+            playerObj.hp = hp;
+        }
+        if (!playerObj.maxHp) {
+            playerObj.maxHp = 100;
+        }
+        
+        const oldHp = playerObj.hp;
+        const validHp = (hp !== undefined && hp !== null) ? hp : (playerObj.hp || 100);
+        const scale = Math.max(0, Math.min(1, validHp / playerObj.maxHp));
+        
+        // DEBUG: Log dettagliato per capire il bug del doppio danno
+        const damage = oldHp - validHp;
+        console.log(`[HP BAR DETAILED] Player ${playerObj.username}:`);
+        console.log(`  - HP prima: ${oldHp}, HP dopo: ${validHp}, Differenza: ${damage}`);
+        console.log(`  - MaxHP: ${playerObj.maxHp}`);
+        console.log(`  - Scale calcolata: ${scale.toFixed(3)} (${(scale * 100).toFixed(1)}%)`);
+        console.log(`  - Parametro hp ricevuto: ${hp}`);
+        
         playerObj.mesh.userData.hpBar.scale.x = scale;
         playerObj.mesh.userData.hpBar.material.color.setHex(scale > 0.5 ? 0x00ff00 : (scale > 0.2 ? 0xffa500 : 0xff0000));
     }

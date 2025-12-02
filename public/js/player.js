@@ -66,6 +66,9 @@ function loadKnightModel(callback) {
                 }
                 child.castShadow = true;
                 child.receiveShadow = true;
+                
+                // FIX: Disabilita frustum culling per evitare scomparsa quando vicino alla camera
+                child.frustumCulled = false;
             }
         });
 
@@ -1199,24 +1202,26 @@ function toggleWeapon(force) {
     staffContainer.visible = isRanged;
     bowContainer.visible = isBow;
 
-    playerMesh.visible = isMelee;
+    // FIX: In prima persona NON mostrare MAI il playerMesh
+    playerMesh.visible = isMelee; // Solo in terza persona (melee)
+    
     if (isRanged || isBow) {
-        playerMesh.visible = true;
         stopBlocking();
         euler.x = 0;
     }
 
-    // Gestisci visibilità personaggio low-poly e Knight model
-    if (isMelee) {
-        // In melee: nascondi TUTTO il personaggio low-poly e mostra solo Knight
-        if (playerLimbs.helmet) playerLimbs.helmet.visible = false;
-        if (playerLimbs.torso) playerLimbs.torso.visible = false;
-        if (playerLimbs.legL) playerLimbs.legL.visible = false;
-        if (playerLimbs.legR) playerLimbs.legR.visible = false;
-        playerLimbs.armL.visible = false;
-        playerLimbs.armR.visible = false;
-        playerMesh.children.forEach(c => { if (c.userData.isTorsoPart) c.visible = false; });
+    // NASCONDI SEMPRE il personaggio low-poly - NON DEVE MAI ESSERE VISIBILE
+    if (playerLimbs.helmet) playerLimbs.helmet.visible = false;
+    if (playerLimbs.torso) playerLimbs.torso.visible = false;
+    if (playerLimbs.legL) playerLimbs.legL.visible = false;
+    if (playerLimbs.legR) playerLimbs.legR.visible = false;
+    playerLimbs.armL.visible = false;
+    playerLimbs.armR.visible = false;
+    playerMesh.children.forEach(c => { if (c.userData.isTorsoPart) c.visible = false; });
 
+    // Gestisci Knight model
+    if (isMelee) {
+        // In melee: mostra Knight model in terza persona
         if (knightModel) {
             knightModel.visible = true;
             // Aggiorna colore Knight con team color
@@ -1228,15 +1233,7 @@ function toggleWeapon(force) {
             });
         }
     } else {
-        // In ranged/bow: mostra personaggio low-poly e nascondi Knight
-        if (playerLimbs.helmet) playerLimbs.helmet.visible = true;
-        if (playerLimbs.torso) playerLimbs.torso.visible = true;
-        if (playerLimbs.legL) playerLimbs.legL.visible = true;
-        if (playerLimbs.legR) playerLimbs.legR.visible = true;
-        playerLimbs.armL.visible = true;
-        playerLimbs.armR.visible = true;
-        playerMesh.children.forEach(c => { if (c.userData.isTorsoPart) c.visible = true; });
-
+        // In ranged/bow: nascondi Knight, mostra solo arma (staff/bow è già visibile)
         if (knightModel) {
             knightModel.visible = false;
         }
@@ -1369,6 +1366,48 @@ function updatePhysics(delta) {
             }
         }
     });
+
+    // NUOVO: Collisioni player-to-player (previene che i giocatori si attraversino)
+    Object.values(otherPlayers).forEach(op => {
+        if (!op.mesh) return;
+        
+        const otherPos = op.mesh.position;
+        const myPos = playerMesh.position;
+        
+        // Calcola distanza orizzontale (XZ) e verticale (Y)
+        const dx = myPos.x - otherPos.x;
+        const dz = myPos.z - otherPos.z;
+        const distXZ = Math.sqrt(dx * dx + dz * dz);
+        const dy = Math.abs(myPos.y - otherPos.y);
+        
+        // Parametri di collisione
+        const collisionRadius = 8.0; // Raggio di collisione tra giocatori
+        const collisionHeight = 12.0; // Altezza del cilindro di collisione
+        
+        // Verifica se i giocatori si sovrappongono
+        if (distXZ < collisionRadius && dy < collisionHeight) {
+            // Calcola direzione di separazione (solo XZ, mantieni Y)
+            const pushDir = new THREE.Vector3(dx, 0, dz);
+            
+            // Se i giocatori sono esattamente nella stessa posizione, usa direzione casuale
+            if (pushDir.lengthSq() < 0.001) {
+                pushDir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+            }
+            
+            pushDir.normalize();
+            
+            // Calcola quanto devono essere separati
+            const overlap = collisionRadius - distXZ;
+            const pushStrength = overlap * 20 * delta * 60; // Forza proporzionale alla sovrapposizione
+            
+            // Sposta il giocatore locale
+            playerMesh.position.addScaledVector(pushDir, pushStrength);
+            
+            // Applica anche una leggera resistenza al movimento
+            velocity.x *= 0.5;
+            velocity.z *= 0.5;
+        }
+    });
     if (socket && myId) {
         const animState = !canJump ? 'jump' : (isSprinting ? 'run' : (moving) ? 'walk' : 'idle');
         socket.emit('playerMovement', { position: playerMesh.position, rotation: { x: playerMesh.rotation.x, y: playerMesh.rotation.y, z: playerMesh.rotation.z }, animState: animState, weaponMode: weaponMode });
@@ -1378,10 +1417,12 @@ function updatePhysics(delta) {
 function updateCamera() {
     const headPos = playerMesh.position.clone().add(new THREE.Vector3(0, 8.5, 0));
     if (weaponMode === 'ranged' || weaponMode === 'bow') {
+        // FIX: Prima persona - posiziona camera nella testa, NON mostrare playerMesh
         camera.position.copy(headPos).addScaledVector(new THREE.Vector3(0, 0, -1).applyEuler(euler), 0.5);
         camera.quaternion.setFromEuler(euler);
-        playerMesh.visible = true;
+        // playerMesh.visible = false; // GIÀ gestito in toggleWeapon
     } else {
+        // Terza persona per melee
         const offset = new THREE.Vector3(0, 16, 25).applyEuler(new THREE.Euler(euler.x, euler.y, 0, 'YXZ'));
         camera.position.copy(headPos).add(offset);
         const lookAtPoint = playerMesh.position.clone().add(new THREE.Vector3(0, 12, 0));
@@ -1429,6 +1470,9 @@ function loadEnemyKnightModel(playerObj) {
 
                 child.material.metalness = 0.5;
                 child.material.roughness = 0.5;
+                
+                // FIX: Disabilita frustum culling per evitare scomparsa quando vicino alla camera
+                child.frustumCulled = false;
             }
         });
 
@@ -1512,6 +1556,13 @@ function loadEnemyKnightModel(playerObj) {
                     action = mixer.clipAction(clip);
                     action.setLoop(THREE.LoopRepeat);
                     playerObj.knightAnimations.block = action;
+                } else if (name.includes('death') || name.includes('die')) {
+                    // Animazione morte
+                    action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopOnce);
+                    action.clampWhenFinished = true;
+                    playerObj.knightAnimations.death = action;
+                    console.log(`[ENEMY-LOAD] Mapped death animation for ${playerObj.username}`);
                 }
             });
 

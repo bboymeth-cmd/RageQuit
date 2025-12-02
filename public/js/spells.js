@@ -202,6 +202,11 @@ function performWhirlwind() {
     if (socket) socket.emit('playerAttack', { type: 'whirlwind', origin: playerMesh.position, direction: new THREE.Vector3(), duration: whirlDurationMs });
     Object.values(otherPlayers).forEach((e) => {
         if (e.mesh.position.distanceTo(playerMesh.position) < SETTINGS.whirlwindRadius) {
+            // CRITICAL: Verifica se il target è già morto o ha HP ≤ 0
+            if (e.mesh.userData.isDead || (e.hp !== undefined && e.hp <= 0)) {
+                return; // Salta questo target
+            }
+            
             let dmg = SETTINGS.whirlwindDmg;
             if (e.mesh.userData.isBlocking) {
                 dmg *= (1.0 - SETTINGS.blockMitigation);
@@ -243,6 +248,12 @@ function fireHitscan() {
             spawnStoneSpikes(enemyFound, true);
             const hitId = Object.keys(otherPlayers).find(key => otherPlayers[key].mesh === enemyFound);
             if (hitId && socket) {
+                // CRITICAL: Verifica se il target è già morto o ha HP ≤ 0
+                if (otherPlayers[hitId].mesh.userData.isDead || (otherPlayers[hitId].hp !== undefined && otherPlayers[hitId].hp <= 0)) {
+                    console.log(`[SPUNTONI] Target ${hitId} già morto, hit ignorato`);
+                    return;
+                }
+                
                 let dmg = SETTINGS.beamDmg;
                 if (otherPlayers[hitId].mesh.userData.isBlocking) {
                     dmg *= (1.0 - SETTINGS.blockMitigation);
@@ -348,32 +359,85 @@ function updateProjectiles(delta) {
 
         if (move.lengthSq() < 0.000001) continue;
 
+        const prevPos = p.position.clone(); // Salva posizione precedente
         const nextPos = p.position.clone().add(move);
         let hit = false, hitPoint = p.position.clone();
         let hitTarget = null;
 
         if (p.userData.isMine) {
-            // Controlla collisione con altri giocatori
+            // MIGLIORAMENTO: Ray casting continuo per proiettili veloci
+            // Controlla collisione lungo il percorso tra posizione precedente e successiva
             Object.values(otherPlayers).forEach(op => {
-                const dx = p.position.x - op.mesh.position.x;
-                const dz = p.position.z - op.mesh.position.z;
+                if (hit) return; // Skip se già colpito qualcuno
+
+                // HITBOX CORRETTA: usa bottom del player (y-6) come base dell'hitbox
+                const targetPos = op.mesh.position.clone();
+                targetPos.y -= 6.0; // Sposta al livello del terreno (pivot è a y=6, piedi a y=0)
+                
+                const targetRadius = 10.0; // Raggio di collisione aumentato per catturare meglio i colpi
+                const targetHeight = 18.0; // Da piedi (y=0) a sopra testa (y=18)
+
+                // Crea un ray dalla posizione precedente a quella successiva
+                const rayDir = new THREE.Vector3().subVectors(nextPos, prevPos);
+                const rayLength = rayDir.length();
+                if (rayLength < 0.001) return;
+                
+                rayDir.normalize();
+
+                // Trova il punto più vicino al target lungo il ray
+                const toTarget = new THREE.Vector3().subVectors(targetPos, prevPos);
+                const projection = toTarget.dot(rayDir);
+                
+                // Clamp la proiezione alla lunghezza del ray
+                const clampedProjection = Math.max(0, Math.min(rayLength, projection));
+                const closestPoint = prevPos.clone().add(rayDir.clone().multiplyScalar(clampedProjection));
+
+                // Calcola distanza ORIZZONTALE (XZ) per cilindro
+                const dx = closestPoint.x - targetPos.x;
+                const dz = closestPoint.z - targetPos.z;
                 const distXZ = Math.sqrt(dx * dx + dz * dz);
-                const dy = p.position.y - op.mesh.position.y;
-                if (distXZ < 8.0 && dy > 0 && dy < 15.0) {
-                    hit = true; hitTarget = op.mesh; hitPoint = p.position.clone();
+                
+                // Calcola differenza verticale (Y) dalla BASE dell'hitbox
+                const heightDiff = closestPoint.y - targetPos.y;
+
+                // Verifica collisione con cilindro: da y=0 (piedi) fino a y=18 (sopra testa)
+                if (distXZ < targetRadius && heightDiff >= 0 && heightDiff <= targetHeight) {
+                    hit = true;
+                    hitTarget = op.mesh;
+                    hitPoint = closestPoint.clone();
                 }
             });
 
-            // Controlla collisione con il mostro IA
+            // Controlla collisione con il mostro IA (con ray casting migliorato)
             if (!hit && isPvEMode && aiMonster && aiMonster.state !== 'dead') {
-                const dx = p.position.x - aiMonster.mesh.position.x;
-                const dz = p.position.z - aiMonster.mesh.position.z;
-                const distXZ = Math.sqrt(dx * dx + dz * dz);
-                const dy = p.position.y - aiMonster.mesh.position.y;
-                if (distXZ < 10.0 && dy > 0 && dy < 20.0) {
-                    hit = true;
-                    hitTarget = aiMonster.mesh;
-                    hitPoint = p.position.clone();
+                // HITBOX CORRETTA per mostro AI
+                const targetPos = aiMonster.mesh.position.clone();
+                targetPos.y -= 6.0; // Base a livello del terreno
+                
+                const targetRadius = 12.0; // Raggio maggiore per il mostro
+                const targetHeight = 24.0; // Mostro più alto
+
+                const rayDir = new THREE.Vector3().subVectors(nextPos, prevPos);
+                const rayLength = rayDir.length();
+                
+                if (rayLength > 0.001) {
+                    rayDir.normalize();
+                    const toTarget = new THREE.Vector3().subVectors(targetPos, prevPos);
+                    const projection = toTarget.dot(rayDir);
+                    const clampedProjection = Math.max(0, Math.min(rayLength, projection));
+                    const closestPoint = prevPos.clone().add(rayDir.clone().multiplyScalar(clampedProjection));
+
+                    // Distanza cilindrica XZ per mostro AI
+                    const dx = closestPoint.x - targetPos.x;
+                    const dz = closestPoint.z - targetPos.z;
+                    const distXZ = Math.sqrt(dx * dx + dz * dz);
+                    const heightDiff = closestPoint.y - targetPos.y;
+
+                    if (distXZ < targetRadius && heightDiff >= 0 && heightDiff <= targetHeight) {
+                        hit = true;
+                        hitTarget = aiMonster.mesh;
+                        hitPoint = closestPoint.clone();
+                    }
                 }
             }
 
@@ -411,6 +475,13 @@ function updateProjectiles(delta) {
                     }
 
                     if (socket) {
+                        // CRITICAL: Verifica se il target è già morto o ha HP ≤ 0
+                        if (otherPlayers[targetId].mesh.userData.isDead || (otherPlayers[targetId].hp !== undefined && otherPlayers[targetId].hp <= 0)) {
+                            console.log(`[PROJECTILE] Target ${targetId} già morto, hit ignorato`);
+                            toRemove.push(i);
+                            continue;
+                        }
+                        
                         if (p.userData.type === 2) {
                             spawnExplosionVisual(hitPoint, 0xffffff, SETTINGS.pushVisualRadius);
                             checkShockwaveAoE(hitPoint);
@@ -431,13 +502,35 @@ function updateProjectiles(delta) {
             }
         }
         else {
-            const dx = p.position.x - playerMesh.position.x;
-            const dz = p.position.z - playerMesh.position.z;
-            const distXZ = Math.sqrt(dx * dx + dz * dz);
-            const dy = p.position.y - playerMesh.position.y;
-            if (distXZ < 8.0 && dy > 0 && dy < 15.0) {
-                hit = true; hitPoint = playerMesh.position;
-                playSound('hit');
+            // MIGLIORAMENTO: Ray casting per proiettili nemici verso il giocatore locale
+            // HITBOX CORRETTA: base a livello del terreno
+            const targetPos = playerMesh.position.clone();
+            targetPos.y -= 6.0; // Sposta al livello del terreno
+            
+            const targetRadius = 10.0;
+            const targetHeight = 18.0; // Da piedi a sopra testa
+
+            const rayDir = new THREE.Vector3().subVectors(nextPos, prevPos);
+            const rayLength = rayDir.length();
+            
+            if (rayLength > 0.001) {
+                rayDir.normalize();
+                const toTarget = new THREE.Vector3().subVectors(targetPos, prevPos);
+                const projection = toTarget.dot(rayDir);
+                const clampedProjection = Math.max(0, Math.min(rayLength, projection));
+                const closestPoint = prevPos.clone().add(rayDir.clone().multiplyScalar(clampedProjection));
+
+                // Distanza cilindrica XZ per proiettili nemici verso giocatore locale
+                const dx = closestPoint.x - targetPos.x;
+                const dz = closestPoint.z - targetPos.z;
+                const distXZ = Math.sqrt(dx * dx + dz * dz);
+                const heightDiff = closestPoint.y - targetPos.y;
+
+                if (distXZ < targetRadius && heightDiff >= 0 && heightDiff <= targetHeight) {
+                    hit = true;
+                    hitPoint = closestPoint.clone();
+                    playSound('hit');
+                }
             }
         }
 
@@ -458,6 +551,9 @@ function updateProjectiles(delta) {
             if (p.userData.type !== 2 && p.userData.type !== 5) spawnExplosionVisual(hitPoint, p.material.color.getHex(), p.userData.type === 3 ? SETTINGS.fireballRadius : 5);
             scene.remove(p); projectiles.splice(i, 1);
         } else {
+            // Salva posizione precedente per debug visualization
+            p.userData.prevPosition = p.position.clone();
+            
             p.position.add(move); p.userData.life -= delta;
 
             let gravity = SETTINGS.gravity;
@@ -485,6 +581,12 @@ function checkShockwaveAoE(origin) {
     Object.values(otherPlayers).forEach(op => {
         const distToEnemy = op.mesh.position.distanceTo(origin);
         if (distToEnemy < SETTINGS.pushRadius) {
+            // CRITICAL: Verifica se il target è già morto o ha HP ≤ 0
+            if (op.mesh.userData.isDead || (op.hp !== undefined && op.hp <= 0)) {
+                console.log(`[SHOCKWAVE] Target già morto, push ignorato`);
+                return; // Salta questo target
+            }
+            
             const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key] === op);
             let finalDmg = 10;
             if (op.mesh.userData.isBlocking) finalDmg *= (1.0 - SETTINGS.blockMitigation);
@@ -499,6 +601,12 @@ function checkShockwaveAoE(origin) {
 function checkSplashDamage(origin, radius, damage, pushBack) {
     Object.values(otherPlayers).forEach(op => {
         if (op.mesh.position.distanceTo(origin) < radius) {
+            // CRITICAL: Verifica se il target è già morto o ha HP ≤ 0
+            if (op.mesh.userData.isDead || (op.hp !== undefined && op.hp <= 0)) {
+                console.log(`[SPLASH] Target già morto, danno ignorato`);
+                return; // Salta questo target
+            }
+            
             const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key] === op);
             let finalDmg = damage;
             if (op.mesh.userData.isBlocking) {

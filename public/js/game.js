@@ -84,6 +84,10 @@ let distanceSinceStep = 0;
 
 let euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
+// DEBUG: Visualizzazione hitbox (attiva/disattiva con F3)
+let showHitboxes = false;
+const hitboxHelpers = [];
+
 const SETTINGS = {
     speed: 400.0,
     sprintMulti: 1.4,
@@ -580,7 +584,9 @@ function init() {
     scene.background = new THREE.Color(0x2a2a3a);
     scene.fog = new THREE.Fog(0x2a2a3a, 150, 600); // Fog più aggressiva per nascondere pop-in
 
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.5, 1000);
+    // FIX: Near plane ridotto a 0.05 per evitare che i nemici molto vicini diventino invisibili
+    // Questo permette ai nemici di essere visibili anche in combattimento corpo a corpo
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
     createPlayer(); createSword(); createStaff(); createShield(); createBow();
 
     // Luci ottimizzate per FPS - ridotte al minimo
@@ -780,13 +786,14 @@ function respawnPlayer() {
     // Mostra il messaggio
     document.getElementById('message').style.display = 'none';
 
-    // Rendi visibile il player - FORZA VISIBILITÀ
-    playerMesh.visible = true;
-    playerMesh.traverse((child) => {
-        child.visible = true;
-    });
+    // FIX: NON usare traverse che rende visibile TUTTO il low-poly!
+    // Usa toggleWeapon per gestire correttamente la visibilità in base alla modalità
+    // playerMesh.visible sarà gestito da toggleWeapon in base a weaponMode
+    
+    // Forza aggiornamento visibilità corretta in base alla modalità attuale
+    toggleWeapon(true);
 
-    console.log('[CLIENT] respawnPlayer - playerMesh.visible:', playerMesh.visible, 'isDead:', playerStats.isDead);
+    console.log('[CLIENT] respawnPlayer - weaponMode:', weaponMode, 'isDead:', playerStats.isDead);
 
     // Notifica il server del respawn e richiedi lo stato aggiornato di tutti i player
     if (socket && socket.connected) {
@@ -968,6 +975,15 @@ function setupControls() {
                 break;
             case 72: // H key - Show match history
                 showMatchStats();
+                break;
+            case 114: // F3 key - Toggle hitbox debug visualization
+                showHitboxes = !showHitboxes;
+                addToLog(`Debug Hitbox: ${showHitboxes ? 'ON' : 'OFF'}`, showHitboxes ? '#00ff00' : '#ff0000');
+                if (!showHitboxes) {
+                    // Rimuovi tutti gli helper visuali
+                    hitboxHelpers.forEach(helper => scene.remove(helper));
+                    hitboxHelpers.length = 0;
+                }
                 break;
             case KEYBINDS.SPELL_1: selectSpell(1); startCasting(1, 'attack', 'Digit1'); break; case KEYBINDS.SPELL_2: selectSpell(2); startCasting(2, 'attack', 'Digit2'); break;
             case KEYBINDS.SPELL_3: selectSpell(3); startCasting(3, 'attack', 'Digit3'); break; case KEYBINDS.SPELL_4: selectSpell(4); startCasting(4, 'attack', 'Digit4'); break;
@@ -1208,10 +1224,90 @@ function animate() {
     // Update LOD every 5 frames for performance
     if (frameCount % 5 === 0) updateLOD();
 
+    // DEBUG: Visualizza hitbox se attivo
+    if (showHitboxes) {
+        updateHitboxVisualization();
+    }
+
     updateAnimations(delta);
     frameCount++;
     if (frameCount % 2 === 0) updateUI(); // Aggiorna UI ogni 2 frame per performance
     renderer.render(scene, camera);
+}
+
+// DEBUG: Funzione per visualizzare le hitbox dei giocatori e proiettili
+function updateHitboxVisualization() {
+    // Rimuovi vecchi helper
+    hitboxHelpers.forEach(helper => scene.remove(helper));
+    hitboxHelpers.length = 0;
+
+    // Visualizza hitbox del giocatore locale
+    if (playerMesh && !playerStats.isDead) {
+        const playerHitbox = new THREE.Mesh(
+            new THREE.CylinderGeometry(8, 8, 15, 16, 1, true),
+            new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.5 })
+        );
+        playerHitbox.position.copy(playerMesh.position);
+        playerHitbox.position.y += 7.5; // Centro del cilindro
+        scene.add(playerHitbox);
+        hitboxHelpers.push(playerHitbox);
+    }
+
+    // Visualizza hitbox degli altri giocatori
+    Object.values(otherPlayers).forEach(op => {
+        if (op.mesh) {
+            const enemyHitbox = new THREE.Mesh(
+                new THREE.CylinderGeometry(8, 8, 15, 16, 1, true),
+                new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true, transparent: true, opacity: 0.5 })
+            );
+            enemyHitbox.position.copy(op.mesh.position);
+            enemyHitbox.position.y += 7.5;
+            scene.add(enemyHitbox);
+            hitboxHelpers.push(enemyHitbox);
+        }
+    });
+
+    // Visualizza hitbox dei proiettili
+    projectiles.forEach(proj => {
+        const projHitbox = new THREE.Mesh(
+            new THREE.SphereGeometry(proj.userData.radius || 2, 8, 8),
+            new THREE.MeshBasicMaterial({ 
+                color: proj.userData.isMine ? 0x00ffff : 0xff00ff, 
+                wireframe: true, 
+                transparent: true, 
+                opacity: 0.7 
+            })
+        );
+        projHitbox.position.copy(proj.position);
+        scene.add(projHitbox);
+        hitboxHelpers.push(projHitbox);
+
+        // Mostra anche il ray di collisione (linea dal frame precedente a quello corrente)
+        if (proj.userData.prevPosition) {
+            const points = [proj.userData.prevPosition.clone(), proj.position.clone()];
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const lineMaterial = new THREE.LineBasicMaterial({ 
+                color: proj.userData.isMine ? 0x00ffff : 0xff00ff,
+                transparent: true,
+                opacity: 0.5
+            });
+            const line = new THREE.Line(lineGeometry, lineMaterial);
+            scene.add(line);
+            hitboxHelpers.push(line);
+        }
+    });
+
+    // Visualizza hitbox del mostro AI se presente
+    if (isPvEMode && aiMonster && aiMonster.mesh && aiMonster.state !== 'dead') {
+        const monsterHitbox = new THREE.Mesh(
+            new THREE.CylinderGeometry(12, 12, 20, 16, 1, true),
+            new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 })
+        );
+        monsterHitbox.position.copy(aiMonster.mesh.position);
+        monsterHitbox.position.y += 10;
+        scene.add(monsterHitbox);
+        hitboxHelpers.push(monsterHitbox);
+    }
 }
 
 // Non inizializzare subito - aspetta che menu.js chiami startGame()

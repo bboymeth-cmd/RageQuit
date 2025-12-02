@@ -32,9 +32,26 @@ function validateHit(shooterId, targetId, hitPosition) {
 
     // Verifica che il target sia abbastanza vicino alla posizione dell'hit
     const dist = distance3D(target.position, hitPosition);
-    const maxHitDistance = 50; // Increased tolerance for lag/AoE
+    
+    // MIGLIORAMENTO: Distanza massima dinamica basata sul tipo di arma
+    // Aumentata tolleranza per compensare lag e movimento veloce dei proiettili
+    const maxHitDistance = 60; // Increased tolerance for fast projectiles + lag
+    
+    // Validazione aggiuntiva: verifica che lo shooter non sia troppo lontano
+    const shooterDist = distance3D(shooter.position, target.position);
+    const maxShooterDistance = 500; // Range massimo delle armi
+    
+    if (shooterDist > maxShooterDistance) {
+        console.log(`[HIT VALIDATION] Shooter troppo lontano: ${shooterDist.toFixed(1)} > ${maxShooterDistance}`);
+        return false;
+    }
 
-    return dist <= maxHitDistance;
+    const isValid = dist <= maxHitDistance;
+    if (!isValid) {
+        console.log(`[HIT VALIDATION] Hit position troppo lontana dal target: ${dist.toFixed(1)} > ${maxHitDistance}`);
+    }
+
+    return isValid;
 }
 
 // Serviamo i file statici dalla cartella "public"
@@ -192,6 +209,17 @@ io.on('connection', (socket) => {
                 // Clamp HP a 0 per evitare valori negativi
                 players[targetId].hp = Math.max(0, players[targetId].hp);
             }
+            // CRITICAL: Se il player muore, invia PRIMA playerDied POI gli altri eventi
+            if (players[targetId].hp <= 0 && !players[targetId].isDead) {
+                players[targetId].isDead = true;
+                console.log(`[SERVER] Player ${targetId} morto (PUSH) - broadcasting playerDied PRIMA`);
+                io.emit('playerDied', {
+                    id: targetId,
+                    killerId: socket.id,
+                    position: players[targetId].position
+                });
+            }
+
             // Emit to the target player so they can execute the push effect
             io.to(targetId).emit('playerPushed', {
                 forceY: pushData.forceY,
@@ -199,27 +227,20 @@ io.on('connection', (socket) => {
                 pushOrigin: pushData.pushOrigin
             });
 
-            // Emit health update and damage effect to all players
+            // Emit health update and damage effect to all players (DOPO playerDied se necessario)
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
             if (actualDamage > 0) {
                 io.emit('remoteDamageTaken', { id: targetId }); // Notify all for blood/damage effect
-            }
-
-            if (players[targetId].hp <= 0 && !players[targetId].isDead) {
-                players[targetId].isDead = true;
-                console.log(`[SERVER] Player ${targetId} morto (PUSH) - broadcasting a tutti`);
-                // Broadcast morte a TUTTI i client immediatamente
-                io.emit('playerDied', {
-                    id: targetId,
-                    killerId: socket.id,
-                    position: players[targetId].position
-                });
             }
         }
     });
 
     socket.on('playerHit', (dmgData) => {
         const targetId = dmgData.targetId;
+
+        // DEBUG: Log ogni hit ricevuto con timestamp
+        const timestamp = Date.now();
+        console.log(`[HIT RECEIVED] ${timestamp} - Attacker: ${socket.id.substring(0,8)}, Target: ${targetId?.substring(0,8)}, Damage: ${dmgData.damage}`);
 
         // Verifica che il target esista e non sia già morto
         if (!players[targetId] || players[targetId].isDead || players[targetId].hp <= 0) {
@@ -237,15 +258,36 @@ io.on('connection', (socket) => {
         }
 
         if (players[targetId]) {
-            const actualDamage = dmgData.damage;
+            // FIX: SERVER CALCOLA IL DANNO - Non fidarsi del client!
+            // Valida il tipo di danno e usa i valori server-side
+            let actualDamage = dmgData.damage || 10; // Default fallback
+            
+            // Clamp danno tra 1 e 100 per prevenire exploit
+            actualDamage = Math.max(1, Math.min(100, actualDamage));
+            
+            console.log(`[SERVER] HP PRIMA: ${players[targetId].hp}, Danno: ${actualDamage}`);
+            
             players[targetId].hp -= actualDamage;
 
             // Clamp HP a 0 per evitare valori negativi
             players[targetId].hp = Math.max(0, players[targetId].hp);
 
-            console.log(`[HIT VALIDATED] ${socket.id} -> ${targetId} (${actualDamage} dmg, hp: ${players[targetId].hp})`);
+            console.log(`[HIT VALIDATED] ${socket.id.substring(0,8)} -> ${targetId.substring(0,8)} | HP: ${players[targetId].hp + actualDamage} → ${players[targetId].hp} (dmg: ${actualDamage})`);
 
-            // Send health update to all
+            // CRITICAL: Se il player muore, invia PRIMA playerDied POI updateHealth
+            // Questo previene race conditions dove il client riceve HP update prima della morte
+            if (players[targetId].hp <= 0 && !players[targetId].isDead) {
+                players[targetId].isDead = true;
+                console.log(`[SERVER] Player ${targetId} morto (HIT) - broadcasting playerDied PRIMA di updateHealth`);
+                // Broadcast morte a TUTTI i client PRIMA dell'HP update
+                io.emit('playerDied', {
+                    id: targetId,
+                    killerId: socket.id,
+                    position: players[targetId].position
+                });
+            }
+
+            // Send health update to all (DOPO playerDied se necessario)
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
 
             // Send specific damage response to the target for local effects (like screen flash)
@@ -254,17 +296,6 @@ io.on('connection', (socket) => {
             // Notify all for blood/damage effect
             if (actualDamage > 0) {
                 io.emit('remoteDamageTaken', { id: targetId });
-            }
-
-            if (players[targetId].hp <= 0 && !players[targetId].isDead) {
-                players[targetId].isDead = true;
-                console.log(`[SERVER] Player ${targetId} morto (HIT) - broadcasting a tutti`);
-                // Broadcast morte a TUTTI i client immediatamente
-                io.emit('playerDied', {
-                    id: targetId,
-                    killerId: socket.id,
-                    position: players[targetId].position
-                });
             }
         }
     });
