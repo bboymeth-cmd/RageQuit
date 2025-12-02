@@ -125,19 +125,26 @@ function updateConversions(delta) {
 function applyConversionTick(type) {
     const cost = 5; const gain = 5;
     if (type === 1) {
+        // Stamina -> HP
         if (playerStats.stamina >= cost && playerStats.hp < playerStats.maxHp) {
-            playerStats.stamina -= cost; playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain);
-            if (socket) socket.emit('playerHealed', { amount: gain });
+            playerStats.stamina -= cost; 
+            playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain);
+            // FIX: NON inviare playerHealed per conversioni - gestite solo localmente
+            // Questo previene il "burst" doppio di HP (locale + server)
         }
     }
     else if (type === 2) {
+        // HP -> Mana
         if (playerStats.hp > cost && playerStats.mana < playerStats.maxMana) {
-            playerStats.hp -= cost; playerStats.mana = Math.min(playerStats.maxMana, playerStats.mana + gain);
+            playerStats.hp -= cost; 
+            playerStats.mana = Math.min(playerStats.maxMana, playerStats.mana + gain);
         }
     }
     else if (type === 3) {
+        // Mana -> Stamina
         if (playerStats.mana >= cost && playerStats.stamina < playerStats.maxStamina) {
-            playerStats.mana -= cost; playerStats.stamina = Math.min(playerStats.maxStamina, playerStats.stamina + gain);
+            playerStats.mana -= cost; 
+            playerStats.stamina = Math.min(playerStats.maxStamina, playerStats.stamina + gain);
         }
     }
     updateUI();

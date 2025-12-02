@@ -126,10 +126,10 @@ const SETTINGS = {
     beamRange: 200,
 
     // Bow (Arco)
-    bowCastTime: 0.3,
+    bowCastTime: 0.6, // Aumentato da 0.3 a 0.6 secondi
     arrowSpeed: 1000.0,
     arrowDmg: 15,
-    arrowCost: 5,
+    arrowCost: 10, // Aumentato da 5 a 10 stamina
     arrowGravity: 5, // GRAVITÀ FRECCIA RIDOTTA
 
     fireRate: 400, meleeRate: 500,
@@ -144,7 +144,7 @@ const SETTINGS = {
 
     healAmount: 20, healCost: 10, healCooldown: 10000,
     conversionCost: 5, conversionGain: 5, conversionCooldown: 1000,
-    whirlwindDmg: 30, whirlwindRadius: 25, whirlwindCost: 10, whirlwindCooldown: 2000,
+    whirlwindDmg: 30, whirlwindRadius: 25, whirlwindCost: 10, whirlwindCooldown: 4000, // Raddoppiato da 2000 a 4000ms
     spikesCooldown: 3000,
     blockStaminaCost: 0.5,
     blockMitigation: 0.7

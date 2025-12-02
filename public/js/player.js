@@ -1422,8 +1422,9 @@ function updateCamera() {
         camera.quaternion.setFromEuler(euler);
         // playerMesh.visible = false; // GIÀ gestito in toggleWeapon
     } else {
-        // Terza persona per melee
-        const offset = new THREE.Vector3(0, 16, 25).applyEuler(new THREE.Euler(euler.x, euler.y, 0, 'YXZ'));
+        // Terza persona per melee - FIX: Camera più bassa per mirare più in alto
+        // Offset Y a 5 - mirino punta verso l'orizzonte
+        const offset = new THREE.Vector3(0, 5, 25).applyEuler(new THREE.Euler(euler.x, euler.y, 0, 'YXZ'));
         camera.position.copy(headPos).add(offset);
         const lookAtPoint = playerMesh.position.clone().add(new THREE.Vector3(0, 12, 0));
         camera.lookAt(lookAtPoint);

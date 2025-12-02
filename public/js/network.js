@@ -245,13 +245,45 @@ function initMultiplayer() {
             // CRITICAL FIX: NON modificare HP qui! Il server invia già updateHealth con HP corretto.
             // playerHitResponse serve SOLO per feedback visivo locale (flash screen, particles, etc)
             
-            console.log(`[PLAYER HIT] Ricevuto danno: ${data.damage} - HP NON modificato localmente, attendo updateHealth dal server`);
+            console.log(`[PLAYER HIT] Ricevuto danno: ${data.damage}, Bloccato: ${data.isBlocking}`);
             
-            // Effetti visivi del danno
-            if (data.damage > 0) {
+            // Effetti visivi differenziati se BLOCK o danno normale
+            if (data.isBlocking) {
+                // FEEDBACK per BLOCCO
+                console.log(`[BLOCK] Danno parato! Danno ridotto: ${Math.round(data.damage)}`);
+                
+                // Testo "BLOCK" prominente
+                createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 10, 0)), "BLOCK!", "#00aaff");
+                
+                // Flash schermo blu (invece di rosso)
+                flashScreen('blue');
+                
+                // Particelle blu/argento per indicare blocco
+                spawnParticles(playerMesh.position, 0x00aaff, 15, 40, 0.7, false);
+                
+                // Suono di blocco metallico
+                playSound('block');
+                
+                // Log nella chat
+                addToLog(`Attacco PARATO! (${Math.round(data.damage)} danni mitigati)`, "block-success");
+                
+            } else if (data.damage > 0) {
+                // FEEDBACK per DANNO NORMALE (non bloccato)
+                
+                // Flash schermo rosso
                 flashScreen('red');
-                // Opzionale: mostra particelle di sangue
-                spawnParticles(playerMesh.position, 0xff0000, 5, 20, 0.5, false);
+                
+                // Particelle di sangue
+                spawnParticles(playerMesh.position, 0xff0000, 10, 30, 0.6, false);
+                
+                // Testo floating con danno
+                createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0)), `-${Math.round(data.damage)}`, "#ff0000");
+                
+                // Suono di impatto
+                playSound('hit');
+                
+                // Log nella chat
+                addToLog(`Hai subito ${Math.round(data.damage)} danni!`, "damage-taken");
             }
             
             // NOTE: La morte viene gestita in updateHealth quando HP <= 0

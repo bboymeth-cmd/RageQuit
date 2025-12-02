@@ -229,7 +229,13 @@ io.on('connection', (socket) => {
 
             // Emit health update and damage effect to all players (DOPO playerDied se necessario)
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
+            
+            // FIX: Invia playerHitResponse per feedback visivo completo (testo danno, flash, suono)
             if (actualDamage > 0) {
+                io.to(targetId).emit('playerHitResponse', { 
+                    damage: actualDamage,
+                    isBlocking: players[targetId].isBlocking || false // Invia info se stava bloccando
+                });
                 io.emit('remoteDamageTaken', { id: targetId }); // Notify all for blood/damage effect
             }
         }
@@ -291,7 +297,10 @@ io.on('connection', (socket) => {
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
 
             // Send specific damage response to the target for local effects (like screen flash)
-            io.to(targetId).emit('playerHitResponse', { damage: actualDamage });
+            io.to(targetId).emit('playerHitResponse', { 
+                damage: actualDamage,
+                isBlocking: players[targetId].isBlocking || false // Invia info se stava bloccando
+            });
 
             // Notify all for blood/damage effect
             if (actualDamage > 0) {
