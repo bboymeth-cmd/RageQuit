@@ -1398,14 +1398,14 @@ function updatePhysics(delta) {
             
             // Calcola quanto devono essere separati
             const overlap = collisionRadius - distXZ;
-            const pushStrength = overlap * 20 * delta * 60; // Forza proporzionale alla sovrapposizione
+            const pushStrength = overlap * 5 * delta * 60; // Forza ridotta per evitare rimbalzi scattosi
             
-            // Sposta il giocatore locale
+            // Sposta il giocatore locale gradualmente
             playerMesh.position.addScaledVector(pushDir, pushStrength);
             
-            // Applica anche una leggera resistenza al movimento
-            velocity.x *= 0.5;
-            velocity.z *= 0.5;
+            // Applica resistenza al movimento per collisione più fluida
+            velocity.x *= 0.8;
+            velocity.z *= 0.8;
         }
     });
     if (socket && myId) {

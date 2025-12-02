@@ -81,6 +81,7 @@ let mouseSensitivity = (savedSens && !isNaN(parseFloat(savedSens))) ? parseFloat
 let lastJumpTime = 0;
 let lastFootstepTime = 0;
 let distanceSinceStep = 0;
+let isJumpKeyPressed = false; // Flag per prevenire salti ripetuti tenendo premuto Space
 
 let euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
@@ -95,8 +96,8 @@ const SETTINGS = {
 
     // JUMP SETTINGS
     jumpForce: 200.0,
-    jumpCooldown: 300,
-    jumpCost: 5,
+    jumpCooldown: 800,
+    jumpCost: 10,
     gravity: 800.0,
 
     // Missile (Dardo)
@@ -944,8 +945,8 @@ function setupControls() {
             case KEYBINDS.MOVE_FORWARD: moveForward = true; break; case KEYBINDS.MOVE_LEFT: moveLeft = true; break; case KEYBINDS.MOVE_BACKWARD: moveBackward = true; break; case KEYBINDS.MOVE_RIGHT: moveRight = true; break;
             case KEYBINDS.JUMP:
                 const now = performance.now();
-                if (canJump && (now - lastJumpTime > SETTINGS.jumpCooldown) && playerStats.stamina >= SETTINGS.jumpCost) {
-                    velocity.y += SETTINGS.jumpForce; playerStats.stamina -= SETTINGS.jumpCost; lastJumpTime = now; canJump = false;
+                if (!isJumpKeyPressed && canJump && (now - lastJumpTime > SETTINGS.jumpCooldown) && playerStats.stamina >= SETTINGS.jumpCost) {
+                    velocity.y += SETTINGS.jumpForce; playerStats.stamina -= SETTINGS.jumpCost; lastJumpTime = now; canJump = false; isJumpKeyPressed = true;
                 }
                 break;
             case KEYBINDS.SPRINT: isSprinting = true; break;
@@ -1017,6 +1018,12 @@ function setupControls() {
         }
 
         if (keyToRebind || playerStats.isDead) return;
+        
+        // Reset flag salto quando Space viene rilasciato
+        if (e.code === KEYBINDS.JUMP) {
+            isJumpKeyPressed = false;
+        }
+        
         switch (e.code) {
             case KEYBINDS.MOVE_FORWARD: moveForward = false; break; case KEYBINDS.MOVE_LEFT: moveLeft = false; break; case KEYBINDS.MOVE_BACKWARD: moveBackward = false; break; case KEYBINDS.MOVE_RIGHT: moveRight = false; break; case KEYBINDS.SPRINT: isSprinting = false; break;
             case KEYBINDS.SPELL_1: stopCasting('Digit1'); break; case KEYBINDS.SPELL_2: stopCasting('Digit2'); break; case KEYBINDS.SPELL_3: stopCasting('Digit3'); break; case KEYBINDS.SPELL_4: stopCasting('Digit4'); break;

@@ -204,10 +204,13 @@ io.on('connection', (socket) => {
         if (players[targetId]) {
             let actualDamage = 0;
             if (pushData.damage) {
-                actualDamage = pushData.damage;
+                // FIX: Assicura che il danno sia sempre positivo (non può guarire)
+                actualDamage = Math.max(0, Math.round(pushData.damage));
+                console.log(`[PUSH DAMAGE] Target: ${targetId.substring(0,8)}, Damage: ${actualDamage}, HP before: ${players[targetId].hp}`);
                 players[targetId].hp -= actualDamage;
                 // Clamp HP a 0 per evitare valori negativi
                 players[targetId].hp = Math.max(0, players[targetId].hp);
+                console.log(`[PUSH DAMAGE] HP after: ${players[targetId].hp}`);
             }
             // CRITICAL: Se il player muore, invia PRIMA playerDied POI gli altri eventi
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {

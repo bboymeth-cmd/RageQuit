@@ -634,9 +634,12 @@ function checkShockwaveAoE(origin) {
             const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key] === op);
             let finalDmg = 10;
             if (op.mesh.userData.isBlocking) finalDmg *= (1.0 - SETTINGS.blockMitigation);
+            // FIX: Assicura che il danno sia sempre positivo (minimo 1)
+            finalDmg = Math.max(1, Math.round(finalDmg));
             const dir = new THREE.Vector3().subVectors(op.mesh.position, origin).normalize();
             const forceVec = dir.multiplyScalar(SETTINGS.pushForce);
             forceVec.y = SETTINGS.pushUpForce;
+            console.log(`[SHOCKWAVE] Emitting playerPushed: targetId=${targetId}, damage=${finalDmg}`);
             socket.emit('playerPushed', { targetId: targetId, forceVec: forceVec, damage: finalDmg });
         }
     });
