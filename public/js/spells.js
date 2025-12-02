@@ -124,6 +124,18 @@ function updateConversions(delta) {
 
 function applyConversionTick(type) {
     const cost = 5; const gain = 5;
+    
+    // Calcola posizione testo visibile in prima e terza persona
+    let textPosition;
+    if (weaponMode === 'ranged' || weaponMode === 'bow') {
+        // Prima persona: testo leggermente davanti e in basso rispetto alla camera
+        const forward = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation);
+        textPosition = camera.position.clone().add(forward.multiplyScalar(3)).add(new THREE.Vector3(0, -1, 0));
+    } else {
+        // Terza persona: testo sopra il personaggio
+        textPosition = playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0));
+    }
+    
     if (type === 1) {
         // Stamina -> HP
         if (playerStats.stamina >= cost && playerStats.hp < playerStats.maxHp) {
@@ -131,6 +143,9 @@ function applyConversionTick(type) {
             playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain);
             // FIX: NON inviare playerHealed per conversioni - gestite solo localmente
             // Questo previene il "burst" doppio di HP (locale + server)
+            
+            // Mostra testo floating HP guadagnato (verde)
+            createFloatingText(textPosition, `+${gain}`, '#00ff00');
         }
     }
     else if (type === 2) {
@@ -138,6 +153,12 @@ function applyConversionTick(type) {
         if (playerStats.hp > cost && playerStats.mana < playerStats.maxMana) {
             playerStats.hp -= cost; 
             playerStats.mana = Math.min(playerStats.maxMana, playerStats.mana + gain);
+            
+            // Mostra testo floating Mana guadagnato (blu) e HP perso (rosso)
+            // Separazione maggiore in melee per evitare sovrapposizione
+            const separation = (weaponMode === 'melee' || weaponMode === 'block') ? 1.5 : 0.5;
+            createFloatingText(textPosition.clone().add(new THREE.Vector3(-separation, 0, 0)), `-${cost}`, '#ff6666');
+            createFloatingText(textPosition.clone().add(new THREE.Vector3(separation, 0, 0)), `+${gain}`, '#6666ff');
         }
     }
     else if (type === 3) {
@@ -145,6 +166,9 @@ function applyConversionTick(type) {
         if (playerStats.mana >= cost && playerStats.stamina < playerStats.maxStamina) {
             playerStats.mana -= cost; 
             playerStats.stamina = Math.min(playerStats.maxStamina, playerStats.stamina + gain);
+            
+            // Mostra testo floating Stamina guadagnata (giallo)
+            createFloatingText(textPosition, `+${gain}`, '#ffff00');
         }
     }
     updateUI();
@@ -172,7 +196,20 @@ function performHeal() {
         socket.emit('playerHealed', { amount: SETTINGS.healAmount });
         socket.emit('remoteEffect', { type: 'heal' });
     }
-    lastHealTime = now; addToLog(`Curato di ${SETTINGS.healAmount} HP`, "heal"); createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0)), `+${SETTINGS.healAmount}`, '#00ff00');
+    lastHealTime = now; addToLog(`Curato di ${SETTINGS.healAmount} HP`, "heal"); 
+    
+    // FIX: Posiziona testo floating davanti alla camera per visibilità in prima e terza persona
+    let textPosition;
+    if (weaponMode === 'ranged' || weaponMode === 'bow') {
+        // Prima persona: testo leggermente davanti e in basso rispetto alla camera
+        const forward = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation);
+        textPosition = camera.position.clone().add(forward.multiplyScalar(3)).add(new THREE.Vector3(0, -1, 0));
+    } else {
+        // Terza persona: testo sopra il personaggio
+        textPosition = playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0));
+    }
+    createFloatingText(textPosition, `+${SETTINGS.healAmount}`, '#00ff00');
+    
     flashScreen('green'); updateUI();
 }
 
