@@ -122,7 +122,7 @@ const SETTINGS = {
 
     // Beam (Spuntoni)
     beamDmg: 25,
-    beamCost: 5,
+    beamCost: 10, // Aumentato da 5 a 10 mana
     beamRange: 200,
 
     // Bow (Arco)
