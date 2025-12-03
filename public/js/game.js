@@ -131,7 +131,7 @@ const SETTINGS = {
     arrowSpeed: 1000.0,
     arrowDmg: 15,
     arrowCost: 10, // Aumentato da 5 a 10 stamina
-    arrowGravity: 5, // GRAVITÀ FRECCIA RIDOTTA
+    arrowGravity: 100, // GRAVITÀ FRECCIA RIDOTTA
 
     fireRate: 400, meleeRate: 500,
     meleeRange: 32,
