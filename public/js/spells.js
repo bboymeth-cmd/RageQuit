@@ -9,6 +9,12 @@ function startCasting(spellId, type, key) {
     } else if (type === 'attack' && spellId !== 4) {
         let cost = (spellId === 1) ? SETTINGS.missileCost : (spellId === 2) ? SETTINGS.pushCost : (spellId === 3) ? SETTINGS.fireballCost : SETTINGS.beamCost;
         if (playerStats.mana < cost) { addToLog("Mana insufficiente!", "#555"); return; }
+
+        // TRIGGER MAGE START ANIMATION
+        if (typeof switchMageAnimation !== 'undefined') {
+            switchMageAnimation("arms_armature|arms_armature|Magic_spell_loop_start");
+        }
+
     } else if (type === 'conversion') {
         const now = performance.now();
         if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Ricarica...", "#aaa"); return; }
@@ -27,7 +33,13 @@ function stopCasting(key) {
             if (castingState.type === 'attack') executeAttack(castingState.currentSpell);
             else if (castingState.type === 'conversion') executeConversion(castingState.currentSpell);
             else if (castingState.type === 'bow_shot') executeAttack('bow');
-        } else { addToLog("Lancio annullato", "#555"); }
+        } else {
+            addToLog("Lancio annullato", "#555");
+            // CANCEL ANIMATION -> Return to Idle
+            if (typeof switchMageAnimation !== 'undefined') {
+                switchMageAnimation("arms_armature|arms_armature|Combat_idle_loop");
+            }
+        }
         castingState.active = false; document.getElementById('cast-bar-container').style.display = 'none';
     }
 }
@@ -61,6 +73,12 @@ function executeAttack(id) {
         let camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
         const spawnPos = camera.position.clone().add(camDir.multiplyScalar(2));
         spawnProjectile(5); // 5 is Arrow ID
+
+        // Trigger FPS Animation
+        if (typeof switchArcherAnimation !== 'undefined') {
+            switchArcherAnimation('Bow_FIRE');
+        }
+
         if (socket) socket.emit('playerAttack', { type: 5, origin: spawnPos, direction: camDir });
         playSound('shoot_bolt'); // Reuse bolt sound
         return;
@@ -70,6 +88,11 @@ function executeAttack(id) {
     if (playerStats.mana < cost) { addToLog("Mana insufficiente!", "#555"); return; }
     if (id === 4 && (now - lastSpikesTime < SETTINGS.spikesCooldown)) { addToLog("Spuntoni in ricarica...", "#aaa"); return; }
     playerStats.mana -= cost; lastAttackTime = now; isAttacking = true; attackTimer = 0;
+
+    // TRIGGER MAGE ATTACK ANIMATION
+    if (typeof switchMageAnimation !== 'undefined') {
+        switchMageAnimation("arms_armature|arms_armature|Magic_spell_attack");
+    }
 
     let camDir = new THREE.Vector3(); camera.getWorldDirection(camDir); let spawnPos = getStaffTip();
     if (id === 4) { lastSpikesTime = now; fireHitscan(); } else { spawnProjectile(id); if (socket) socket.emit('playerAttack', { type: id, origin: spawnPos, direction: camDir }); }
@@ -124,7 +147,7 @@ function updateConversions(delta) {
 
 function applyConversionTick(type) {
     const cost = 5; const gain = 5;
-    
+
     // Calcola posizione testo visibile in prima e terza persona
     let textPosition;
     if (weaponMode === 'ranged' || weaponMode === 'bow') {
@@ -135,15 +158,15 @@ function applyConversionTick(type) {
         // Terza persona: testo sopra il personaggio
         textPosition = playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0));
     }
-    
+
     if (type === 1) {
         // Stamina -> HP
         if (playerStats.stamina >= cost && playerStats.hp < playerStats.maxHp) {
-            playerStats.stamina -= cost; 
+            playerStats.stamina -= cost;
             playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain);
             // FIX: NON inviare playerHealed per conversioni - gestite solo localmente
             // Questo previene il "burst" doppio di HP (locale + server)
-            
+
             // Mostra testo floating HP guadagnato (verde)
             createFloatingText(textPosition, `+${gain}`, '#00ff00');
         }
@@ -151,9 +174,9 @@ function applyConversionTick(type) {
     else if (type === 2) {
         // HP -> Mana
         if (playerStats.hp > cost && playerStats.mana < playerStats.maxMana) {
-            playerStats.hp -= cost; 
+            playerStats.hp -= cost;
             playerStats.mana = Math.min(playerStats.maxMana, playerStats.mana + gain);
-            
+
             // Mostra testo floating Mana guadagnato (blu) e HP perso (rosso)
             // Separazione maggiore in melee per evitare sovrapposizione
             const separation = (weaponMode === 'melee' || weaponMode === 'block') ? 1.5 : 0.5;
@@ -164,9 +187,9 @@ function applyConversionTick(type) {
     else if (type === 3) {
         // Mana -> Stamina
         if (playerStats.mana >= cost && playerStats.stamina < playerStats.maxStamina) {
-            playerStats.mana -= cost; 
+            playerStats.mana -= cost;
             playerStats.stamina = Math.min(playerStats.maxStamina, playerStats.stamina + gain);
-            
+
             // Mostra testo floating Stamina guadagnata (giallo)
             createFloatingText(textPosition, `+${gain}`, '#ffff00');
         }
@@ -196,8 +219,8 @@ function performHeal() {
         socket.emit('playerHealed', { amount: SETTINGS.healAmount });
         socket.emit('remoteEffect', { type: 'heal' });
     }
-    lastHealTime = now; addToLog(`Curato di ${SETTINGS.healAmount} HP`, "heal"); 
-    
+    lastHealTime = now; addToLog(`Curato di ${SETTINGS.healAmount} HP`, "heal");
+
     // FIX: Posiziona testo floating davanti alla camera per visibilità in prima e terza persona
     let textPosition;
     if (weaponMode === 'ranged' || weaponMode === 'bow') {
@@ -209,7 +232,7 @@ function performHeal() {
         textPosition = playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0));
     }
     createFloatingText(textPosition, `+${SETTINGS.healAmount}`, '#00ff00');
-    
+
     flashScreen('green'); updateUI();
 }
 
@@ -250,7 +273,7 @@ function performWhirlwind() {
             if (e.mesh.userData.isDead || (e.hp !== undefined && e.hp <= 0)) {
                 return; // Salta questo target
             }
-            
+
             let dmg = SETTINGS.whirlwindDmg;
             if (e.mesh.userData.isBlocking) {
                 dmg *= (1.0 - SETTINGS.blockMitigation);
@@ -297,7 +320,7 @@ function fireHitscan() {
                     console.log(`[SPUNTONI] Target ${hitId} già morto, hit ignorato`);
                     return;
                 }
-                
+
                 let dmg = SETTINGS.beamDmg;
                 if (otherPlayers[hitId].mesh.userData.isBlocking) {
                     dmg *= (1.0 - SETTINGS.blockMitigation);
@@ -417,7 +440,7 @@ function updateProjectiles(delta) {
                 // HITBOX CORRETTA: usa bottom del player (y-6) come base dell'hitbox
                 const targetPos = op.mesh.position.clone();
                 targetPos.y -= 6.0; // Sposta al livello del terreno (pivot è a y=6, piedi a y=0)
-                
+
                 const targetRadius = 10.0; // Raggio di collisione aumentato per catturare meglio i colpi
                 const targetHeight = 18.0; // Da piedi (y=0) a sopra testa (y=18)
 
@@ -425,13 +448,13 @@ function updateProjectiles(delta) {
                 const rayDir = new THREE.Vector3().subVectors(nextPos, prevPos);
                 const rayLength = rayDir.length();
                 if (rayLength < 0.001) return;
-                
+
                 rayDir.normalize();
 
                 // Trova il punto più vicino al target lungo il ray
                 const toTarget = new THREE.Vector3().subVectors(targetPos, prevPos);
                 const projection = toTarget.dot(rayDir);
-                
+
                 // Clamp la proiezione alla lunghezza del ray
                 const clampedProjection = Math.max(0, Math.min(rayLength, projection));
                 const closestPoint = prevPos.clone().add(rayDir.clone().multiplyScalar(clampedProjection));
@@ -440,7 +463,7 @@ function updateProjectiles(delta) {
                 const dx = closestPoint.x - targetPos.x;
                 const dz = closestPoint.z - targetPos.z;
                 const distXZ = Math.sqrt(dx * dx + dz * dz);
-                
+
                 // Calcola differenza verticale (Y) dalla BASE dell'hitbox
                 const heightDiff = closestPoint.y - targetPos.y;
 
@@ -457,13 +480,13 @@ function updateProjectiles(delta) {
                 // HITBOX CORRETTA per mostro AI
                 const targetPos = aiMonster.mesh.position.clone();
                 targetPos.y -= 6.0; // Base a livello del terreno
-                
+
                 const targetRadius = 12.0; // Raggio maggiore per il mostro
                 const targetHeight = 24.0; // Mostro più alto
 
                 const rayDir = new THREE.Vector3().subVectors(nextPos, prevPos);
                 const rayLength = rayDir.length();
-                
+
                 if (rayLength > 0.001) {
                     rayDir.normalize();
                     const toTarget = new THREE.Vector3().subVectors(targetPos, prevPos);
@@ -525,7 +548,7 @@ function updateProjectiles(delta) {
                             toRemove.push(i);
                             continue;
                         }
-                        
+
                         if (p.userData.type === 2) {
                             spawnExplosionVisual(hitPoint, 0xffffff, SETTINGS.pushVisualRadius);
                             checkShockwaveAoE(hitPoint);
@@ -550,13 +573,13 @@ function updateProjectiles(delta) {
             // HITBOX CORRETTA: base a livello del terreno
             const targetPos = playerMesh.position.clone();
             targetPos.y -= 6.0; // Sposta al livello del terreno
-            
+
             const targetRadius = 10.0;
             const targetHeight = 18.0; // Da piedi a sopra testa
 
             const rayDir = new THREE.Vector3().subVectors(nextPos, prevPos);
             const rayLength = rayDir.length();
-            
+
             if (rayLength > 0.001) {
                 rayDir.normalize();
                 const toTarget = new THREE.Vector3().subVectors(targetPos, prevPos);
@@ -597,7 +620,7 @@ function updateProjectiles(delta) {
         } else {
             // Salva posizione precedente per debug visualization
             p.userData.prevPosition = p.position.clone();
-            
+
             p.position.add(move); p.userData.life -= delta;
 
             let gravity = SETTINGS.gravity;
@@ -630,7 +653,7 @@ function checkShockwaveAoE(origin) {
                 console.log(`[SHOCKWAVE] Target già morto, push ignorato`);
                 return; // Salta questo target
             }
-            
+
             const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key] === op);
             let finalDmg = 10;
             if (op.mesh.userData.isBlocking) finalDmg *= (1.0 - SETTINGS.blockMitigation);
@@ -653,7 +676,7 @@ function checkSplashDamage(origin, radius, damage, pushBack) {
                 console.log(`[SPLASH] Target già morto, danno ignorato`);
                 return; // Salta questo target
             }
-            
+
             const targetId = Object.keys(otherPlayers).find(key => otherPlayers[key] === op);
             let finalDmg = damage;
             if (op.mesh.userData.isBlocking) {

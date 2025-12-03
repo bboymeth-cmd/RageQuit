@@ -585,9 +585,10 @@ function init() {
     scene.background = new THREE.Color(0x2a2a3a);
     scene.fog = new THREE.Fog(0x2a2a3a, 150, 600); // Fog più aggressiva per nascondere pop-in
 
-    // FIX: Near plane ridotto a 0.05 per evitare che i nemici molto vicini diventino invisibili
-    // Questo permette ai nemici di essere visibili anche in combattimento corpo a corpo
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);
+    // FIX: Near plane ridotto a 0.001 (minimo possibile) per evitare clipping braccia
+    // Le braccia sono molto vicine, serve un valore bassissimo
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.001, 1000);
+    scene.add(camera); // IMPORTANT: Add camera to scene so its children are rendered
     createPlayer(); createSword(); createStaff(); createShield(); createBow();
 
     // Luci ottimizzate per FPS - ridotte al minimo
@@ -601,13 +602,13 @@ function init() {
 
     seed = WORLD_SEED; setupWorld(); setupControls(); setupUIEvents();
     renderer = new THREE.WebGLRenderer({
-        antialias: false,
+        antialias: true, // FIX: Enable antialias for better quality
         powerPreference: 'high-performance',
-        precision: 'mediump',
+        precision: 'highp', // FIX: High precision
         alpha: false,
         stencil: false
     });
-    renderer.setPixelRatio(1);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // FIX: Use device pixel ratio for sharpness
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = false;
     renderer.sortObjects = false;
@@ -790,7 +791,7 @@ function respawnPlayer() {
     // FIX: NON usare traverse che rende visibile TUTTO il low-poly!
     // Usa toggleWeapon per gestire correttamente la visibilità in base alla modalità
     // playerMesh.visible sarà gestito da toggleWeapon in base a weaponMode
-    
+
     // Forza aggiornamento visibilità corretta in base alla modalità attuale
     toggleWeapon(true);
 
@@ -1018,12 +1019,12 @@ function setupControls() {
         }
 
         if (keyToRebind || playerStats.isDead) return;
-        
+
         // Reset flag salto quando Space viene rilasciato
         if (e.code === KEYBINDS.JUMP) {
             isJumpKeyPressed = false;
         }
-        
+
         switch (e.code) {
             case KEYBINDS.MOVE_FORWARD: moveForward = false; break; case KEYBINDS.MOVE_LEFT: moveLeft = false; break; case KEYBINDS.MOVE_BACKWARD: moveBackward = false; break; case KEYBINDS.MOVE_RIGHT: moveRight = false; break; case KEYBINDS.SPRINT: isSprinting = false; break;
             case KEYBINDS.SPELL_1: stopCasting('Digit1'); break; case KEYBINDS.SPELL_2: stopCasting('Digit2'); break; case KEYBINDS.SPELL_3: stopCasting('Digit3'); break; case KEYBINDS.SPELL_4: stopCasting('Digit4'); break;
@@ -1278,11 +1279,11 @@ function updateHitboxVisualization() {
     projectiles.forEach(proj => {
         const projHitbox = new THREE.Mesh(
             new THREE.SphereGeometry(proj.userData.radius || 2, 8, 8),
-            new THREE.MeshBasicMaterial({ 
-                color: proj.userData.isMine ? 0x00ffff : 0xff00ff, 
-                wireframe: true, 
-                transparent: true, 
-                opacity: 0.7 
+            new THREE.MeshBasicMaterial({
+                color: proj.userData.isMine ? 0x00ffff : 0xff00ff,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.7
             })
         );
         projHitbox.position.copy(proj.position);
@@ -1293,7 +1294,7 @@ function updateHitboxVisualization() {
         if (proj.userData.prevPosition) {
             const points = [proj.userData.prevPosition.clone(), proj.position.clone()];
             const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-            const lineMaterial = new THREE.LineBasicMaterial({ 
+            const lineMaterial = new THREE.LineBasicMaterial({
                 color: proj.userData.isMine ? 0x00ffff : 0xff00ff,
                 transparent: true,
                 opacity: 0.5

@@ -315,21 +315,21 @@ function initMultiplayer() {
                     if (data.targetId === myId) { spawnStoneSpikes(playerMesh, true); }
                     else if (otherPlayers[data.targetId]) { spawnStoneSpikes(otherPlayers[data.targetId].mesh, true); }
                     else { spawnStoneSpikes(data.origin, false); }
-                    // Spikes cast -> Attack animation
+                    // Spikes cast -> Cast animation
                     otherPlayers[data.id].mesh.userData.isAttacking = true;
                     otherPlayers[data.id].mesh.userData.attackTimer = 0;
 
-                    if (typeof playEnemyKnightAnimation === 'function') playEnemyKnightAnimation(otherPlayers[data.id], 'attack', true);
+                    if (typeof playEnemyKnightAnimation === 'function') playEnemyKnightAnimation(otherPlayers[data.id], 'cast', true);
                 }
                 else {
-                    // Projectiles (Magic Missile, Push, Fireball, Arrow) -> Attack animation
+                    // Projectiles (Magic Missile, Push, Fireball, Arrow) -> Cast animation
                     spawnEnemyProjectile(data.origin, data.direction, data.type);
 
                     // Set flag to prevent immediate override
                     otherPlayers[data.id].mesh.userData.isAttacking = true;
                     otherPlayers[data.id].mesh.userData.attackTimer = 0;
 
-                    if (typeof playEnemyKnightAnimation === 'function') playEnemyKnightAnimation(otherPlayers[data.id], 'attack', true);
+                    if (typeof playEnemyKnightAnimation === 'function') playEnemyKnightAnimation(otherPlayers[data.id], 'cast', true);
                 }
             }
         });

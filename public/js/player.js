@@ -2,6 +2,10 @@
 
 // GLB Knight Model - Sistema Completo
 let knightModel = null;
+let fpsBowContainer = null; // Container for FPS Archer Model
+let fpsArcherMixer = null; // Mixer for FPS Archer
+let fpsStaffContainer = null; // Container for FPS Mage Model
+let fpsMageMixer = null; // Mixer for FPS Mage
 let knightMixer = null;
 let knightAnimations = {
     idle: null,
@@ -10,6 +14,7 @@ let knightAnimations = {
     strafe: null,
     jump: null,
     attack: null,
+    cast: null,
     whirlwind: null,
     block: null,
     blockIdle: null,
@@ -66,7 +71,7 @@ function loadKnightModel(callback) {
                 }
                 child.castShadow = true;
                 child.receiveShadow = true;
-                
+
                 // FIX: Disabilita frustum culling per evitare scomparsa quando vicino alla camera
                 child.frustumCulled = false;
             }
@@ -213,6 +218,13 @@ function loadKnightModel(callback) {
                     knightAnimations.attack.clampWhenFinished = true;
                     knightAnimations.attack.repetitions = 1;
                     console.log('    → ATTACK 1 (once, clamp finish - no T-pose)');
+                }
+                else if ((name.includes('cast') && name.includes('1')) || name === 'cast 1' || name === 'cast1') {
+                    knightAnimations.cast = knightMixer.clipAction(clip);
+                    knightAnimations.cast.setLoop(THREE.LoopOnce);
+                    knightAnimations.cast.clampWhenFinished = true;
+                    knightAnimations.cast.repetitions = 1;
+                    console.log('    → CAST 1 (once, clamp finish - spell casting)');
                 }
                 else if (name.includes('whirlwind') || name.includes('180') || name.includes('spin')) {
                     // Whirlwind sul posto: rimuovi root motion (tracce position di hips/root)
@@ -424,6 +436,390 @@ function loadKnightModel(callback) {
         console.error('[KNIGHT] ✗ Load error:', error);
     });
 }
+
+function loadArcherModel() {
+    console.log('=== LOADING ARCHER.GLB ===');
+    const loader = new THREE.GLTFLoader();
+
+    loader.load('./models/archer.glb', (gltf) => {
+        const model = gltf.scene;
+
+        // Setup container attached to camera for FPS view
+        fpsBowContainer = new THREE.Group();
+        fpsBowContainer.add(model);
+
+        // Final Calibrated Values (User Provided)
+        // SCALE HACK: Scale down drastically (0.1) and move very close to camera
+        // This keeps the model "visually" the same size but physically inside the frustum
+        // Original Scale: 0.7 -> New Scale: 0.07 (1/10th)
+        // Original Pos: -0.2, -0.6, -0.3 -> New Pos: -0.02, -0.06, -0.03 (1/10th)
+        // Final Calibrated Values (User Provided)
+        // IDLE STATE
+        const idlePos = new THREE.Vector3(-0.035, -0.055, -0.010);
+        const idleRot = new THREE.Euler(0.020, 3.272, 0.530);
+        const idleScale = new THREE.Vector3(0.090, 0.090, 0.090);
+
+        // AIM STATE
+        const aimPos = new THREE.Vector3(-0.030, -0.030, 0.000);
+        // Rotation and Scale are same as IDLE for now, but we store them if needed
+
+        // Apply Initial (IDLE)
+        model.position.copy(idlePos);
+        model.rotation.copy(idleRot);
+        model.scale.copy(idleScale);
+
+        // Store config for animation switching
+        model.userData.idlePos = idlePos;
+        model.userData.aimPos = aimPos;
+
+        fpsBowContainer.visible = false;
+        if (typeof weaponMode !== 'undefined' && weaponMode === 'bow') {
+            fpsBowContainer.visible = true;
+        }
+        camera.add(fpsBowContainer); // Attach to camera so it moves with view
+
+        // Setup Animation Mixer
+        fpsArcherMixer = new THREE.AnimationMixer(model);
+        fpsArcherAnimations = {}; // Store animations globally or on a reachable object
+
+        // Load and configure animations
+        if (gltf.animations && gltf.animations.length > 0) {
+            // Helper to setup action
+            const setupAction = (name) => {
+                const clip = gltf.animations.find(a => a.name === name);
+                if (clip) {
+                    const action = fpsArcherMixer.clipAction(clip);
+                    fpsArcherAnimations[name] = action;
+                    return action;
+                }
+                return null;
+            };
+
+            const idleAction = setupAction('Bow_IDLE');
+            const aimAction = setupAction('Bow_AIM_IDLE');
+            const runAction = setupAction('Bow_RUN');
+            const walkAction = setupAction('Bow_WALK');
+            const jumpStartAction = setupAction('Bow_JUMP_START');
+            const jumpEndAction = setupAction('Bow_JUMP_END');
+            const fireAction = setupAction('Bow_FIRE');
+
+            // Configure Fire animation to play once and not loop
+            if (fireAction) {
+                fireAction.setLoop(THREE.LoopOnce);
+                fireAction.clampWhenFinished = true;
+
+                // On finish, return to IDLE (or AIM if holding?)
+                fpsArcherMixer.addEventListener('finished', (e) => {
+                    if (e.action === fireAction) {
+                        // Return to appropriate state
+                        if (window.isBowAiming) {
+                            switchArcherAnimation('Bow_AIM_IDLE');
+                        } else {
+                            switchArcherAnimation('Bow_IDLE');
+                        }
+                    }
+                });
+            }
+
+            if (jumpStartAction) {
+                jumpStartAction.setLoop(THREE.LoopOnce);
+                jumpStartAction.clampWhenFinished = true;
+            }
+            if (jumpEndAction) {
+                jumpEndAction.setLoop(THREE.LoopOnce);
+                jumpEndAction.clampWhenFinished = true;
+            }
+
+            // Play IDLE by default
+            if (idleAction) {
+                idleAction.play();
+                fpsArcherCurrentAction = idleAction; // Track current action
+            } else if (gltf.animations[0]) {
+                idleAction.play();
+                fpsArcherCurrentAction = idleAction; // Track current action
+            } else if (gltf.animations[0]) {
+                // Fallback
+                const action = fpsArcherMixer.clipAction(gltf.animations[0]);
+                action.play();
+                fpsArcherCurrentAction = action;
+            }
+        }
+
+        console.log('[ARCHER] ✓ Model loaded with calibrated values.');
+
+        // Check for debug flag to enable calibration tool
+        // ENABLED BY USER REQUEST
+        if (false && (true || window.debugModelPosition)) {
+            enableModelCalibration(model, 'ARCHER');
+        }
+
+        // Traverse to fix materials and apply TEAM COLOR
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.frustumCulled = false; // Always render
+                if (child.material) {
+                    // FIX: Ensure it's visible from both sides
+                    child.material.side = THREE.DoubleSide;
+
+                    // FIX: Apply Team Color Tint (30% intensity)
+                    // Use emissive to give a slight glow/tint of the team color
+                    if (typeof myTeamColor !== 'undefined') {
+                        const color = new THREE.Color(myTeamColor);
+                        // Clone material to avoid affecting other instances if any
+                        child.material = child.material.clone();
+                        child.material.emissive = color;
+                        child.material.emissiveIntensity = 0.2;
+
+                        // FIX: Blend 30% of team color into the base texture
+                        // This keeps the model solid but tints it with the team color
+                        child.material.color.lerp(color, 0.3);
+                    }
+
+                    child.material.needsUpdate = true;
+                }
+            }
+        });
+
+    }, undefined, (error) => {
+        console.error('[ARCHER] ✗ Load error:', error);
+    });
+}
+
+function loadMageModel() {
+    console.log('=== LOADING MAGE.GLB ===');
+    const loader = new THREE.GLTFLoader();
+
+    loader.load('./models/mage.glb', (gltf) => {
+        const model = gltf.scene;
+
+        // Setup container attached to camera for FPS view
+        fpsStaffContainer = new THREE.Group();
+        fpsStaffContainer.add(model);
+
+        // Initial Calibration (Final User Calibrated Values)
+        model.position.set(0.000, -5.080, 0.210);
+        model.rotation.set(-0.140, 3.100, -0.020);
+        model.scale.set(2.810, 2.810, 2.810);
+
+        fpsStaffContainer.visible = false;
+        if (typeof weaponMode !== 'undefined' && weaponMode === 'ranged') {
+            fpsStaffContainer.visible = true;
+        }
+        camera.add(fpsStaffContainer);
+
+        // Setup Animation Mixer
+        fpsMageMixer = new THREE.AnimationMixer(model);
+        window.fpsMageAnimations = {}; // Store animations globally
+
+        // Helper to setup action
+        const setupMageAction = (name, alias) => {
+            let clip = gltf.animations.find(a => a.name === name);
+            if (!clip && alias) clip = gltf.animations.find(a => a.name === alias);
+
+            if (clip) {
+                const action = fpsMageMixer.clipAction(clip);
+                window.fpsMageAnimations[name] = action;
+                return action;
+            }
+            return null;
+        };
+
+        // Load Animations
+        const idleAction = setupMageAction("arms_armature|arms_armature|Combat_idle_loop", "arms_armature|Combat_idle_loop");
+        const spellStartAction = setupMageAction("arms_armature|arms_armature|Magic_spell_loop_start");
+        const spellLoopAction = setupMageAction("arms_armature|arms_armature|Magic_spell_loop");
+        const spellAttackAction = setupMageAction("arms_armature|arms_armature|Magic_spell_attack");
+
+        // Play IDLE by default
+        if (idleAction) {
+            idleAction.play();
+            window.fpsMageAction = idleAction;
+        } else if (gltf.animations.length > 0) {
+            // Fallback
+            const action = fpsMageMixer.clipAction(gltf.animations[0]);
+            action.play();
+            window.fpsMageAction = action;
+        }
+
+        // Function to switch animations
+        window.switchMageAnimation = function (animName) {
+            if (!window.fpsMageAnimations || !window.fpsMageAnimations[animName]) {
+                console.warn('[MAGE] Animation not found:', animName);
+                return;
+            }
+
+            const newAction = window.fpsMageAnimations[animName];
+            if (window.fpsMageAction === newAction) return; // Already playing
+
+            // Fade out current
+            if (window.fpsMageAction) {
+                window.fpsMageAction.fadeOut(0.2);
+            }
+
+            // Reset and fade in new
+            newAction.reset();
+            newAction.fadeIn(0.2);
+            newAction.play();
+            window.fpsMageAction = newAction;
+
+            // Special handling for non-looping animations
+            if (animName === "arms_armature|arms_armature|Magic_spell_loop_start") {
+                newAction.setLoop(THREE.LoopOnce);
+                newAction.clampWhenFinished = true;
+
+                // Auto-transition to LOOP when START finishes
+                fpsMageMixer.addEventListener('finished', (e) => {
+                    if (e.action === newAction) {
+                        window.switchMageAnimation("arms_armature|arms_armature|Magic_spell_loop");
+                    }
+                });
+            }
+
+            if (animName === "arms_armature|arms_armature|Magic_spell_attack") {
+                newAction.setLoop(THREE.LoopOnce);
+                newAction.clampWhenFinished = true;
+
+                // Auto-transition to IDLE when ATTACK finishes
+                fpsMageMixer.addEventListener('finished', (e) => {
+                    if (e.action === newAction) {
+                        window.switchMageAnimation("arms_armature|arms_armature|Combat_idle_loop");
+                    }
+                });
+            }
+        };
+
+        console.log('[MAGE] ✓ Model loaded.');
+
+        // Enable calibration if debug is on
+        if (window.debugModelPosition) {
+            enableModelCalibration(model, 'MAGE');
+        }
+
+        // Apply Team Color / Material Fixes
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.frustumCulled = false;
+                if (child.material) {
+                    child.material.side = THREE.DoubleSide;
+                    if (typeof myTeamColor !== 'undefined') {
+                        const color = new THREE.Color(myTeamColor);
+                        child.material = child.material.clone();
+                        child.material.emissive = color;
+                        child.material.emissiveIntensity = 0.2;
+                        child.material.color.lerp(color, 0.3);
+                    }
+                    child.material.needsUpdate = true;
+                }
+            }
+        });
+
+    }, undefined, (error) => {
+        console.error('[MAGE] ✗ Load error:', error);
+    });
+}
+
+// === REUSABLE MODEL CALIBRATION TOOL ===
+// Call window.debugModelPosition = true; in console before loading model to use
+window.enableModelCalibration = function (model, label = 'MODEL') {
+    console.log(`[CALIBRATION] Enabled for ${label}`);
+
+    // Create UI for calibration
+    let calibUI = document.getElementById('calib-ui');
+    if (!calibUI) {
+        calibUI = document.createElement('div');
+        calibUI.id = 'calib-ui';
+        calibUI.style.position = 'fixed';
+        calibUI.style.top = '10px';
+        calibUI.style.right = '10px';
+        calibUI.style.backgroundColor = 'rgba(0,0,0,0.7)';
+        calibUI.style.color = '#0f0';
+        calibUI.style.padding = '10px';
+        calibUI.style.fontFamily = 'monospace';
+        calibUI.style.zIndex = '9999';
+        document.body.appendChild(calibUI);
+    }
+
+    calibUI.innerHTML = `
+        <b>${label} CALIBRATION</b><br>
+        ARROWS: Move X/Y<br>
+        PgUp/Dn: Move Z<br>
+        I/K: Rot X | J/L: Rot Y | U/O: Rot Z<br>
+        Numpad +/-: Scale<br>
+        P: Log Coords<br>
+        <div id="calib-values"></div>
+    `;
+
+    const updateUI = () => {
+        const vals = document.getElementById('calib-values');
+        if (vals) {
+            vals.innerHTML = `
+                POS: ${model.position.x.toFixed(3)}, ${model.position.y.toFixed(3)}, ${model.position.z.toFixed(3)}<br>
+                ROT: ${model.rotation.x.toFixed(3)}, ${model.rotation.y.toFixed(3)}, ${model.rotation.z.toFixed(3)}<br>
+                SCL: ${model.scale.x.toFixed(3)}
+            `;
+        }
+    };
+    updateUI();
+
+    const handler = (e) => {
+        // Only active if this specific model is being debugged
+        // For simplicity, we assume one model at a time or global toggle
+
+        // FIX: Reduced step size for finer control
+        const moveStep = e.shiftKey ? 0.001 : 0.005; // Was 0.01/0.05
+        const rotStep = e.shiftKey ? 0.005 : 0.02;   // Was 0.01/0.05
+        const scaleStep = e.shiftKey ? 0.001 : 0.01; // Was 0.01/0.1
+
+        switch (e.code) {
+            // Position
+            case 'ArrowLeft': model.position.x -= moveStep; break;
+            case 'ArrowRight': model.position.x += moveStep; break;
+            case 'ArrowUp': model.position.y += moveStep; break;
+            case 'ArrowDown': model.position.y -= moveStep; break;
+            case 'PageUp': model.position.z += moveStep; break;
+            case 'PageDown': model.position.z -= moveStep; break;
+
+            // Rotation
+            case 'KeyI': model.rotation.x += rotStep; break;
+            case 'KeyK': model.rotation.x -= rotStep; break;
+            case 'KeyJ': model.rotation.y += rotStep; break;
+            case 'KeyL': model.rotation.y -= rotStep; break;
+            case 'KeyU': model.rotation.z += rotStep; break;
+            case 'KeyO': model.rotation.z -= rotStep; break;
+
+            // Scale
+            case 'NumpadAdd':
+                model.scale.addScalar(scaleStep);
+                break;
+            case 'NumpadSubtract':
+                model.scale.addScalar(-scaleStep);
+                break;
+
+            // Log
+            case 'KeyP':
+                console.log(`
+// CALIBRATED VALUES for ${label}
+model.position.set(${model.position.x.toFixed(3)}, ${model.position.y.toFixed(3)}, ${model.position.z.toFixed(3)});
+model.rotation.set(${model.rotation.x.toFixed(3)}, ${model.rotation.y.toFixed(3)}, ${model.rotation.z.toFixed(3)});
+model.scale.set(${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)});
+                `);
+                alert('Coordinates logged to console!');
+                break;
+
+            // RESET
+            case 'KeyR':
+                model.position.set(0, -1, -3);
+                model.rotation.set(0, Math.PI, 0);
+                model.scale.set(1, 1, 1);
+                console.log('[CALIBRATION] Reset to default');
+                updateUI();
+                break;
+        }
+        updateUI();
+    };
+
+    window.addEventListener('keydown', handler);
+};
 
 function createLayeredClip(originalClip, includeBones, clipName) {
     // Crea un nuovo clip che include SOLO i track dei bone specificati
@@ -905,6 +1301,11 @@ function createPlayer() {
 
     // Carica il modello Knight dopo aver creato il player
     loadKnightModel();
+
+    // Load FPS Archer Model
+    loadArcherModel();
+    // Load FPS Mage Model
+    loadMageModel();
 }
 
 function updatePlayerColor() {
@@ -1078,6 +1479,88 @@ function updateAnimations(delta) {
         updateKnightAnimation();
     }
 
+    // AGGIORNAMENTO ANIMAZIONI ARCHER FPS
+    if (fpsMageMixer && fpsStaffContainer && fpsStaffContainer.visible) {
+        fpsMageMixer.update(delta);
+
+        // Adjust animation speed based on movement
+        if (window.fpsMageAction) {
+            if (isMoving) {
+                const sprinting = (typeof isSprinting !== 'undefined' && isSprinting);
+                if (sprinting) {
+                    window.fpsMageAction.setEffectiveTimeScale(1.5); // Faster for run
+                } else {
+                    window.fpsMageAction.setEffectiveTimeScale(1.0); // Normal for walk
+                }
+            } else {
+                window.fpsMageAction.setEffectiveTimeScale(1.0); // Normal for idle
+            }
+        }
+    }
+
+    if (fpsArcherMixer && fpsBowContainer && fpsBowContainer.visible) {
+        fpsArcherMixer.update(delta);
+
+
+        // Smooth Position Transition (ADS - Aim Down Sights)
+        if (fpsBowContainer.children.length > 0) {
+            const model = fpsBowContainer.children[0];
+            if (model.userData && model.userData.targetPosition) {
+                // Slower lerp to match the 0.6s cast time (approx 5 * delta)
+                model.position.lerp(model.userData.targetPosition, 5 * delta);
+            }
+        }
+
+        // Logic to switch animations based on mouse input (Aiming) and Movement
+        // Priority: Fire > Jump > Aiming > Running > Walking > Idle
+
+        // Let's add a global 'isBowAiming' flag to track mouse state
+        if (typeof isBowAiming === 'undefined') window.isBowAiming = false;
+        if (typeof archerWasOnGround === 'undefined') window.archerWasOnGround = true;
+
+        // Check Jump State
+        const isOnGround = (typeof canJump !== 'undefined' && canJump); // canJump is true when on ground
+
+        // Detect Jump Start
+        if (archerWasOnGround && !isOnGround) {
+            // Just jumped (or fell)
+            if (velocity.y > 0) {
+                switchArcherAnimation('Bow_JUMP_START');
+            }
+        }
+
+        // Detect Jump End (Landing)
+        if (!archerWasOnGround && isOnGround) {
+            // switchArcherAnimation('Bow_JUMP_END'); // Disabled by user request
+        }
+
+        window.archerWasOnGround = isOnGround;
+
+        // Check Priority Animations
+        const currentActionName = fpsArcherCurrentAction ? fpsArcherCurrentAction.getClip().name : '';
+        const isPriorityAnim = (currentActionName === 'Bow_FIRE' || currentActionName === 'Bow_JUMP_START' || currentActionName === 'Bow_JUMP_END');
+
+        // If a priority animation is playing and running, skip standard movement logic
+        if (isPriorityAnim && fpsArcherCurrentAction.isRunning()) {
+            // Do nothing, let it play
+        } else {
+            if (isBowAiming) {
+                switchArcherAnimation('Bow_AIM_IDLE');
+            } else {
+                if (isMoving) {
+                    const sprinting = (typeof isSprinting !== 'undefined' && isSprinting);
+                    if (sprinting) {
+                        switchArcherAnimation('Bow_RUN');
+                    } else {
+                        switchArcherAnimation('Bow_WALK');
+                    }
+                } else {
+                    switchArcherAnimation('Bow_IDLE');
+                }
+            }
+        }
+    }
+
     const neutralArmY = 8.0;
 
     if (weaponMode === 'ranged') {
@@ -1200,11 +1683,23 @@ function toggleWeapon(force) {
 
     swordContainer.visible = isMelee;
     staffContainer.visible = isRanged;
-    bowContainer.visible = isBow;
+    bowContainer.visible = false; // Hide old bow container
+
+    // Manage FPS Archer Model visibility
+    if (fpsBowContainer) {
+        fpsBowContainer.visible = isBow;
+    }
+    // Manage FPS Mage Model visibility
+    if (fpsStaffContainer) {
+        fpsStaffContainer.visible = isRanged;
+        console.log('[TOGGLE WEAPON] Mage FPS Container visibility set to:', isRanged);
+    } else {
+        console.warn('[TOGGLE WEAPON] fpsStaffContainer is NULL');
+    }
 
     // FIX: In prima persona NON mostrare MAI il playerMesh
     playerMesh.visible = isMelee; // Solo in terza persona (melee)
-    
+
     if (isRanged || isBow) {
         stopBlocking();
         euler.x = 0;
@@ -1370,39 +1865,39 @@ function updatePhysics(delta) {
     // NUOVO: Collisioni player-to-player (previene che i giocatori si attraversino)
     Object.values(otherPlayers).forEach(op => {
         if (!op.mesh) return;
-        
+
         const otherPos = op.mesh.position;
         const myPos = playerMesh.position;
-        
+
         // Calcola distanza orizzontale (XZ) e verticale (Y)
         const dx = myPos.x - otherPos.x;
         const dz = myPos.z - otherPos.z;
         const distXZ = Math.sqrt(dx * dx + dz * dz);
         const dy = Math.abs(myPos.y - otherPos.y);
-        
+
         // Parametri di collisione
         const collisionRadius = 8.0; // Raggio di collisione tra giocatori
         const collisionHeight = 12.0; // Altezza del cilindro di collisione
-        
+
         // Verifica se i giocatori si sovrappongono
         if (distXZ < collisionRadius && dy < collisionHeight) {
             // Calcola direzione di separazione (solo XZ, mantieni Y)
             const pushDir = new THREE.Vector3(dx, 0, dz);
-            
+
             // Se i giocatori sono esattamente nella stessa posizione, usa direzione casuale
             if (pushDir.lengthSq() < 0.001) {
                 pushDir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
             }
-            
+
             pushDir.normalize();
-            
+
             // Calcola quanto devono essere separati
             const overlap = collisionRadius - distXZ;
             const pushStrength = overlap * 5 * delta * 60; // Forza ridotta per evitare rimbalzi scattosi
-            
+
             // Sposta il giocatore locale gradualmente
             playerMesh.position.addScaledVector(pushDir, pushStrength);
-            
+
             // Applica resistenza al movimento per collisione più fluida
             velocity.x *= 0.8;
             velocity.z *= 0.8;
@@ -1471,7 +1966,7 @@ function loadEnemyKnightModel(playerObj) {
 
                 child.material.metalness = 0.5;
                 child.material.roughness = 0.5;
-                
+
                 // FIX: Disabilita frustum culling per evitare scomparsa quando vicino alla camera
                 child.frustumCulled = false;
             }
@@ -1936,4 +2431,66 @@ function updateOtherPlayersAnimations(delta) {
 window.loadEnemyKnightModel = loadEnemyKnightModel;
 window.playEnemyKnightAnimation = playEnemyKnightAnimation;
 window.updateOtherPlayersAnimations = updateOtherPlayersAnimations;
+window.switchArcherAnimation = switchArcherAnimation;
 
+// Helper to switch Archer FPS animations
+function switchArcherAnimation(name) {
+    if (!fpsArcherAnimations || !fpsArcherAnimations[name]) return;
+
+    const newAction = fpsArcherAnimations[name];
+    if (fpsArcherCurrentAction === newAction) return; // Already playing
+
+    // Crossfade
+    newAction.reset();
+    newAction.play();
+    // Determine transition duration
+    // If aiming, sync with Bow Cast Time (drawing the bow)
+    // If releasing, fast return to idle
+    let transitionDuration = 0.2;
+    if (name === 'Bow_AIM_IDLE' && typeof SETTINGS !== 'undefined') {
+        // FIX: If we are already holding the bow drawn (isBowAiming is true) and we just landed/jumped,
+        // we want to SNAP to the end of the animation, not replay the draw.
+        // But 'newAction' is reset() above.
+
+        // If we are switching TO Aim Idle, and we were ALREADY aiming (e.g. coming from Jump),
+        // we should skip the transition or make it instant.
+        if (window.isBowAiming) {
+            // Check if we were playing Jump or something else that interrupted Aim
+            // If so, we might want to snap back to full draw.
+            transitionDuration = 0.1; // Fast snap back to aim
+            // Optionally, we could seek to end of animation?
+            // newAction.time = newAction.getClip().duration;
+        } else {
+            transitionDuration = SETTINGS.bowCastTime;
+        }
+    }
+
+    if (fpsArcherCurrentAction) {
+        fpsArcherCurrentAction.crossFadeTo(newAction, transitionDuration);
+    }
+    fpsArcherCurrentAction = newAction;
+
+    // Set Target Position for ADS
+    if (fpsBowContainer && fpsBowContainer.children[0]) {
+        const model = fpsBowContainer.children[0];
+        const targetPos = (name === 'Bow_AIM_IDLE') ? model.userData.aimPos : model.userData.idlePos;
+        if (targetPos) {
+            model.userData.targetPosition = targetPos;
+        }
+    }
+}
+
+// Global input listeners for Bow Aiming
+document.addEventListener('mousedown', (e) => {
+    if (typeof weaponMode !== 'undefined' && weaponMode === 'bow' && e.button === 0) { // Left Click
+        window.isBowAiming = true;
+        // switchArcherAnimation('Bow_AIM_IDLE'); // Handled in update loop now
+    }
+});
+
+document.addEventListener('mouseup', (e) => {
+    if (typeof weaponMode !== 'undefined' && weaponMode === 'bow' && e.button === 0) {
+        window.isBowAiming = false;
+        // switchArcherAnimation('Bow_IDLE'); // Handled in update loop now
+    }
+});
