@@ -28,6 +28,7 @@ let wasBlocking = false;
 let isKnightLoaded = false;
 let animationStartTime = 0;
 let minAnimDuration = 0; // Durata minima per animazioni speciali
+let sprintCooldown = false; // Prevents rapid toggle when stamina hits 0
 let upperBodyBones = []; // Bone della parte superiore (spine/chest in su)
 let lowerBodyBones = []; // Bone della parte inferiore (hips/gambe)
 // Flag dedicato per salto (mantiene animazione jump anche se canJump torna true anticipatamente)
@@ -57,17 +58,25 @@ function loadKnightModel(callback) {
         knightModel.traverse((child) => {
             if (child.isMesh) {
                 if (child.material) {
+                    // FIX: Clone solo se necessario, preserva texture
                     child.material = child.material.clone();
-                    child.material.color.setHex(teamColor);
-                    // Apply 30% tint of team color to preserve texture
-                    child.material.color.setHex(0xffffff).lerp(new THREE.Color(teamColor), 0.3);
+
+                    // Apply 100% tint of team color (Full Color)
+                    const tintColor = new THREE.Color(0xffffff).lerp(new THREE.Color(teamColor), 1.0);
+                    child.material.color.copy(tintColor);
 
                     // Remove emissive to avoid washing out texture
                     child.material.emissive = new THREE.Color(0x000000);
                     child.material.emissiveIntensity = 0.0;
 
-                    child.material.metalness = 0.5; // Standard metalness
-                    child.material.roughness = 0.5; // Standard roughness
+                    child.material.metalness = 0.5;
+                    child.material.roughness = 0.5;
+
+                    // FIX: Forza rendering corretto
+                    child.material.side = THREE.FrontSide;
+                    child.material.depthWrite = true;
+                    child.material.depthTest = true;
+                    child.material.needsUpdate = true;
                 }
                 child.castShadow = true;
                 child.receiveShadow = true;
@@ -91,6 +100,22 @@ function loadKnightModel(callback) {
 
         if (gltf.animations && gltf.animations.length > 0) {
             console.log('[KNIGHT] Total animations:', gltf.animations.length);
+
+            // Helper to filter root motion but keep specific axes (e.g. Y for bobbing)
+            const filterPositionTrack = (track, keepX, keepY, keepZ) => {
+                const values = track.values;
+                const times = track.times;
+                const newValues = new Float32Array(values.length);
+
+                // Copy values but zero out unwanted axes
+                for (let i = 0; i < values.length; i += 3) {
+                    newValues[i] = keepX ? values[i] : values[0]; // Keep X or use initial
+                    newValues[i + 1] = keepY ? values[i + 1] : values[1]; // Keep Y or use initial
+                    newValues[i + 2] = keepZ ? values[i + 2] : values[2]; // Keep Z or use initial
+                }
+
+                return new THREE.VectorKeyframeTrack(track.name, times, newValues);
+            };
 
             gltf.animations.forEach((clip, index) => {
                 const name = clip.name.toLowerCase();
@@ -192,13 +217,19 @@ function loadKnightModel(callback) {
                     knightAnimations.jumpOriginal.setLoop(THREE.LoopOnce);
                     knightAnimations.jumpOriginal.clampWhenFinished = false;
                     knightAnimations.jumpOriginal.repetitions = 1;
-                    // Crea versione spot filtrando position dei bone root/hips/mixamorig
+                    // Crea versione spot filtrando position dei bone root/hips/mixamorig E quaternion upper body
                     const originalClip = clip;
                     const spotTracks = [];
                     for (let t = 0; t < originalClip.tracks.length; t++) {
                         const track = originalClip.tracks[t];
                         const tl = track.name.toLowerCase();
+                        // Filtra position su root/hips
                         if (tl.includes('.position') && (tl.includes('hips') || tl.includes('mixamorig') || tl === 'position')) {
+                            continue;
+                        }
+                        // Filtra quaternion su spine/chest per evitare rotazione upper body
+                        if (tl.includes('.quaternion') && (tl.includes('spine') || tl.includes('chest'))) {
+                            console.log(`      [Jump] Filtrata rotazione upper body: ${track.name}`);
                             continue;
                         }
                         spotTracks.push(track);
@@ -397,6 +428,35 @@ function loadKnightModel(callback) {
                 knightAnimations.powerupUpper.repetitions = 1;
                 console.log('[KNIGHT] ✓ Created powerup upper body layer');
             }
+            // Layer per JUMP (lower body) - rimuove anche rotazioni upper body
+            if (knightAnimations.jump && lowerBodyBones.length > 0) {
+                const jumpClip = knightAnimations.jump.getClip();
+                // Crea clip solo con lower body MA rimuove anche quaternion di spine/chest
+                const tracks = [];
+                for (let i = 0; i < jumpClip.tracks.length; i++) {
+                    const track = jumpClip.tracks[i];
+                    const trackName = track.name.toLowerCase();
+                    const boneName = trackName.split('.')[0].toLowerCase();
+
+                    // Filtra quaternion di spine/chest per evitare rotazioni upper body
+                    if (trackName.includes('.quaternion') && (boneName.includes('spine') || boneName.includes('chest'))) {
+                        console.log(`      [JumpLower] Filtrata rotazione upper: ${track.name}`);
+                        continue;
+                    }
+
+                    // Mantieni solo tracce di lower body bones
+                    const isLowerBone = lowerBodyBones.some(bone => track.name.startsWith(bone.name + '.'));
+                    if (isLowerBone) {
+                        tracks.push(track);
+                    }
+                }
+                const jumpLowerClip = new THREE.AnimationClip('jump_lowerBody_noRotation', jumpClip.duration, tracks);
+                knightAnimations.jumpLower = knightMixer.clipAction(jumpLowerClip);
+                knightAnimations.jumpLower.setLoop(THREE.LoopOnce);
+                knightAnimations.jumpLower.clampWhenFinished = false;
+                knightAnimations.jumpLower.repetitions = 1;
+                console.log('[KNIGHT] ✓ Created jump lower body layer (no upper rotation)');
+            }
 
             // Avvia idle se disponibile - SEMPRE RUNNING per evitare T-pose
             if (knightAnimations.idle) {
@@ -449,18 +509,15 @@ function loadArcherModel() {
         fpsBowContainer.add(model);
 
         // Final Calibrated Values (User Provided)
-        // SCALE HACK: Scale down drastically (0.1) and move very close to camera
-        // This keeps the model "visually" the same size but physically inside the frustum
-        // Original Scale: 0.7 -> New Scale: 0.07 (1/10th)
-        // Original Pos: -0.2, -0.6, -0.3 -> New Pos: -0.02, -0.06, -0.03 (1/10th)
-        // Final Calibrated Values (User Provided)
+        // RESTORED: Scale and Position restored to original values to avoid clipping with new Camera Near Plane (0.1)
         // IDLE STATE
-        const idlePos = new THREE.Vector3(-0.035, -0.055, -0.010);
-        const idleRot = new THREE.Euler(0.020, 3.272, 0.530);
-        const idleScale = new THREE.Vector3(0.090, 0.090, 0.090);
+        const idlePos = new THREE.Vector3(-0.270, -0.600, -0.300);
+        console.log('[ARCHER DEBUG] Loaded IdlePos:', idlePos);
+        const idleRot = new THREE.Euler(0.020, 3.292, 0.530);
+        const idleScale = new THREE.Vector3(0.700, 0.700, 0.700);
 
         // AIM STATE
-        const aimPos = new THREE.Vector3(-0.030, -0.030, 0.000);
+        const aimPos = new THREE.Vector3(-0.155, -0.220, 0.000);
         // Rotation and Scale are same as IDLE for now, but we store them if needed
 
         // Apply Initial (IDLE)
@@ -558,8 +615,8 @@ function loadArcherModel() {
             if (child.isMesh) {
                 child.frustumCulled = false; // Always render
                 if (child.material) {
-                    // FIX: Ensure it's visible from both sides
-                    child.material.side = THREE.DoubleSide;
+                    // FIX: Rimuove DoubleSide che causa buchi nelle texture
+                    child.material.side = THREE.FrontSide;
 
                     // FIX: Apply Team Color Tint (30% intensity)
                     // Use emissive to give a slight glow/tint of the team color
@@ -575,6 +632,10 @@ function loadArcherModel() {
                         child.material.color.lerp(color, 0.3);
                     }
 
+                    // FIX: Forza depth test corretto per evitare z-fighting
+                    child.material.depthWrite = true;
+                    child.material.depthTest = true;
+                    child.material.transparent = false;
                     child.material.needsUpdate = true;
                 }
             }
@@ -700,7 +761,9 @@ function loadMageModel() {
             if (child.isMesh) {
                 child.frustumCulled = false;
                 if (child.material) {
-                    child.material.side = THREE.DoubleSide;
+                    // FIX: Rimuove DoubleSide che causa buchi nelle texture
+                    child.material.side = THREE.FrontSide;
+
                     if (typeof myTeamColor !== 'undefined') {
                         const color = new THREE.Color(myTeamColor);
                         child.material = child.material.clone();
@@ -708,6 +771,11 @@ function loadMageModel() {
                         child.material.emissiveIntensity = 0.2;
                         child.material.color.lerp(color, 0.3);
                     }
+
+                    // FIX: Forza depth test corretto per evitare z-fighting
+                    child.material.depthWrite = true;
+                    child.material.depthTest = true;
+                    child.material.transparent = false;
                     child.material.needsUpdate = true;
                 }
             }
@@ -763,23 +831,37 @@ window.enableModelCalibration = function (model, label = 'MODEL') {
 
     const handler = (e) => {
         // Only active if this specific model is being debugged
-        // For simplicity, we assume one model at a time or global toggle
+
+        // FIX: Prevent default browser/game actions for debug keys
+        const debugKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown',
+            'KeyI', 'KeyK', 'KeyJ', 'KeyL', 'KeyU', 'KeyO', 'NumpadAdd', 'NumpadSubtract',
+            'KeyP', 'KeyR'];
+
+        if (debugKeys.includes(e.code)) {
+            e.preventDefault();
+            e.stopPropagation();
+        } else {
+            return; // Ignore other keys
+        }
 
         // FIX: Reduced step size for finer control
-        const moveStep = e.shiftKey ? 0.001 : 0.005; // Was 0.01/0.05
-        const rotStep = e.shiftKey ? 0.005 : 0.02;   // Was 0.01/0.05
-        const scaleStep = e.shiftKey ? 0.001 : 0.01; // Was 0.01/0.1
+        const moveStep = e.shiftKey ? 0.001 : 0.005;
+        const rotStep = e.shiftKey ? 0.005 : 0.02;
+        const scaleStep = e.shiftKey ? 0.001 : 0.01;
+
+        // FIX: If model has a targetPosition (lerp enabled), update THAT instead of position directly
+        const target = (model.userData && model.userData.targetPosition) ? model.userData.targetPosition : model.position;
 
         switch (e.code) {
-            // Position
-            case 'ArrowLeft': model.position.x -= moveStep; break;
-            case 'ArrowRight': model.position.x += moveStep; break;
-            case 'ArrowUp': model.position.y += moveStep; break;
-            case 'ArrowDown': model.position.y -= moveStep; break;
-            case 'PageUp': model.position.z += moveStep; break;
-            case 'PageDown': model.position.z -= moveStep; break;
+            // Position - Updates target if exists, or position directly
+            case 'ArrowLeft': target.x -= moveStep; break;
+            case 'ArrowRight': target.x += moveStep; break;
+            case 'ArrowUp': target.y += moveStep; break;
+            case 'ArrowDown': target.y -= moveStep; break;
+            case 'PageUp': target.z += moveStep; break;
+            case 'PageDown': target.z -= moveStep; break;
 
-            // Rotation
+            // Rotation - Always direct update
             case 'KeyI': model.rotation.x += rotStep; break;
             case 'KeyK': model.rotation.x -= rotStep; break;
             case 'KeyJ': model.rotation.y += rotStep; break;
@@ -787,7 +869,7 @@ window.enableModelCalibration = function (model, label = 'MODEL') {
             case 'KeyU': model.rotation.z += rotStep; break;
             case 'KeyO': model.rotation.z -= rotStep; break;
 
-            // Scale
+            // Scale - Always direct update
             case 'NumpadAdd':
                 model.scale.addScalar(scaleStep);
                 break;
@@ -799,15 +881,19 @@ window.enableModelCalibration = function (model, label = 'MODEL') {
             case 'KeyP':
                 console.log(`
 // CALIBRATED VALUES for ${label}
-model.position.set(${model.position.x.toFixed(3)}, ${model.position.y.toFixed(3)}, ${model.position.z.toFixed(3)});
-model.rotation.set(${model.rotation.x.toFixed(3)}, ${model.rotation.y.toFixed(3)}, ${model.rotation.z.toFixed(3)});
-model.scale.set(${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)});
+// Position (Target/Current):
+const pos = new THREE.Vector3(${target.x.toFixed(3)}, ${target.y.toFixed(3)}, ${target.z.toFixed(3)});
+const rot = new THREE.Euler(${model.rotation.x.toFixed(3)}, ${model.rotation.y.toFixed(3)}, ${model.rotation.z.toFixed(3)});
+const scale = new THREE.Vector3(${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)});
                 `);
-                alert('Coordinates logged to console!');
+                alert('Coordinates logged to console (F12)!');
                 break;
 
             // RESET
             case 'KeyR':
+                if (model.userData && model.userData.targetPosition) {
+                    model.userData.targetPosition.set(0, -1, -3);
+                }
                 model.position.set(0, -1, -3);
                 model.rotation.set(0, Math.PI, 0);
                 model.scale.set(1, 1, 1);
@@ -815,6 +901,13 @@ model.scale.set(${model.scale.x.toFixed(3)}, ${model.scale.x.toFixed(3)}, ${mode
                 updateUI();
                 break;
         }
+
+        // Sync position immediately if we updated target, to see result instantly (lerp will catch up/maintain)
+        if (model.userData && model.userData.targetPosition) {
+            // Optional: Force snap to target for instant feedback? 
+            // No, let lerp handle it, but update UI with TARGET values for accuracy
+        }
+
         updateUI();
     };
 
@@ -850,7 +943,8 @@ function playKnightAnimation(animName, forceRestart = false) {
     if (animName === 'attack' && (moveForward || moveBackward || moveLeft || moveRight) && knightAnimations.attackUpper && (knightAnimations.walkLower || knightAnimations.runLower)) {
         const fadeTime = 0.15;
         // Determina clip gambe (run se sprint, altrimenti walk)
-        const isSprintingActive = isSprinting && playerStats.stamina > 0 && moveForward;
+        // Animazione segue l'input del giocatore, non la stamina
+        const isSprintingActive = isSprinting && moveForward;
         const legsAction = isSprintingActive && knightAnimations.runLower ? knightAnimations.runLower : knightAnimations.walkLower;
         // Fade out altri layer (eccetto idle)
         Object.entries(knightAnimations).forEach(([k, action]) => {
@@ -882,7 +976,8 @@ function playKnightAnimation(animName, forceRestart = false) {
     // SPECIAL CASE: layered powerup while moving
     if (animName === 'powerup' && (moveForward || moveBackward || moveLeft || moveRight) && knightAnimations.powerupUpper && (knightAnimations.walkLower || knightAnimations.runLower)) {
         const fadeTime = 0.2;
-        const isSprintingActive = isSprinting && playerStats.stamina > 0 && moveForward;
+        // Animazione segue l'input del giocatore, non la stamina
+        const isSprintingActive = isSprinting && moveForward;
         const legsAction = isSprintingActive && knightAnimations.runLower ? knightAnimations.runLower : knightAnimations.walkLower;
         Object.entries(knightAnimations).forEach(([k, action]) => {
             if (action && action.isRunning() && action !== legsAction && action !== knightAnimations.idle && action !== knightAnimations.powerupUpper) {
@@ -1009,14 +1104,49 @@ function updateKnightAnimation() {
         targetAnim = 'attack';
     }
     else if (isBlocking) {
-        // Block ha priorità su jump - gestito sotto
+        // Block ha priorità su jump - ma se salti mentre blocchi, usa layered
     }
     else if (!canJump && knightAnimations.jump) {
-        // In aria: mostra jump
+        // In aria SENZA bloccare: mostra jump normale
         targetAnim = 'jump';
+        // Riproduci immediatamente l'animazione di salto e esci per evitare override
+        if (currentKnightAnimName !== 'jump') {
+            playKnightAnimation('jump');
+        }
+        return; // ESCI QUI per impedire che il movimento sovrascrivi l'animazione jump
     }
 
     if (isBlocking) {
+        // LAYERING: se blocchi E salti, upper body = blockIdle, lower body = jump
+        if (!canJump && knightAnimations.blockIdleUpper && knightAnimations.jumpLower) {
+            // Stoppa altre animazioni che potrebbero causare conflitti
+            if (knightAnimations.blockIdle && knightAnimations.blockIdle.isRunning()) {
+                knightAnimations.blockIdle.stop();
+            }
+            if (knightAnimations.jump && knightAnimations.jump.isRunning()) {
+                knightAnimations.jump.stop();
+            }
+            if (knightAnimations.strafeLower && knightAnimations.strafeLower.isRunning()) {
+                knightAnimations.strafeLower.stop();
+            }
+
+            // Attiva i layer separati
+            if (!knightAnimations.blockIdleUpper.isRunning()) {
+                knightAnimations.blockIdleUpper.reset();
+                knightAnimations.blockIdleUpper.play();
+            }
+            knightAnimations.blockIdleUpper.setEffectiveWeight(2.0); // Peso alto per upper body
+
+            if (!knightAnimations.jumpLower.isRunning()) {
+                knightAnimations.jumpLower.reset();
+                knightAnimations.jumpLower.play();
+            }
+            knightAnimations.jumpLower.setEffectiveWeight(1.5); // Peso moderato per lower body
+
+            currentKnightAnimName = 'blockIdle+jump_layered';
+            return;
+        }
+
         // PRIORITY: Stop Powerup if blocking starts
         if (knightAnimations.powerup && knightAnimations.powerup.isRunning()) {
             knightAnimations.powerup.stop();
@@ -1055,6 +1185,18 @@ function updateKnightAnimation() {
 
             currentKnightAnimName = 'blockIdle+strafe_layered';
             return;
+        }
+        // Se stavi facendo blockIdle+strafe ma hai smesso di muoverti, passa a blockIdle normale
+        else if (!isMoving && currentKnightAnimName === 'blockIdle+strafe_layered') {
+            // Stoppa i layer
+            if (knightAnimations.blockIdleUpper && knightAnimations.blockIdleUpper.isRunning()) {
+                knightAnimations.blockIdleUpper.stop();
+            }
+            if (knightAnimations.strafeLower && knightAnimations.strafeLower.isRunning()) {
+                knightAnimations.strafeLower.stop();
+            }
+            // Passa a blockIdle normale
+            targetAnim = 'blockIdle';
         }
         // Click parata: block REVERSE -> poi blockIdle se tenuto premuto
         else if (currentKnightAnimName === 'block_reversing' && knightAnimations.block) {
@@ -1169,14 +1311,14 @@ function updateKnightAnimation() {
         // - Strafe: solo A, S o D (laterale/indietro)
         // - Walk: W senza sprint
         // - Run: Shift + W
-        const isSprintingActive = isSprinting && playerStats.stamina > 0;
+        // Animazione segue l'input del giocatore, la stamina limita solo la velocità
         const isStrafing = (moveLeft || moveRight || moveBackward) && !moveForward;
 
         if (isStrafing && knightAnimations.strafe) {
             // A, S o D: usa strafe
             targetAnim = 'strafe';
-        } else if (moveForward && isSprintingActive && knightAnimations.run) {
-            // W + Shift: usa run
+        } else if (moveForward && isSprinting && knightAnimations.run) {
+            // W + Shift: usa run (animazione sempre mostrata se Shift premuto)
             targetAnim = 'run';
         } else if (moveForward && knightAnimations.walk) {
             // W senza sprint: usa walk
@@ -1747,8 +1889,18 @@ function toggleWeapon(force) {
 
     if (isMelee || isRanged) {
         document.getElementById('slot-q').classList.add('active');
+        // FIX: Restore standard near plane for map Z-fighting fix
+        if (camera) {
+            camera.near = 0.1;
+            camera.updateProjectionMatrix();
+        }
     } else if (isBow) {
         document.getElementById('slot-e').classList.add('active');
+        // FIX: Reduce near plane for Bow to avoid clipping when aiming
+        if (camera) {
+            camera.near = 0.01;
+            camera.updateProjectionMatrix();
+        }
     }
 }
 
@@ -1781,8 +1933,18 @@ function updateSwordAnimation(delta) {
 
 function updatePhysics(delta) {
     if (playerStats.mana < playerStats.maxMana) playerStats.mana += SETTINGS.manaRegen * delta;
+
+    // FIX: Sprint Cooldown Hysteresis
+    if (playerStats.stamina <= 0) {
+        if (!sprintCooldown) addToLog("Esausto!", "#ff0000");
+        sprintCooldown = true;
+    } else if (playerStats.stamina > playerStats.maxStamina * 0.10) { // Reduced to 10%
+        sprintCooldown = false;
+    }
+
     let isRegenStaminaBlocked = isBlocking || isWhirlwinding;
-    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && playerStats.stamina > 0 && !isBlocking) {
+    // FIX: Use sprintCooldown check instead of raw stamina > 0
+    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown && !isBlocking) {
         playerStats.stamina -= SETTINGS.sprintStaminaCostPerSec * delta; isRegenStaminaBlocked = true;
     }
     if (isBlocking) {
@@ -1794,7 +1956,8 @@ function updatePhysics(delta) {
     let speed = SETTINGS.speed;
     if (velocity.y != 0) playerStats.isFalling = true;
     if (isBlocking) speed *= 0.5;
-    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && playerStats.stamina > 0 && !isBlocking) { speed *= SETTINGS.sprintMulti; }
+    // FIX: Use sprintCooldown check
+    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown && !isBlocking) { speed *= SETTINGS.sprintMulti; }
 
     velocity.x -= velocity.x * 5 * delta; velocity.z -= velocity.z * 5 * delta; velocity.y -= SETTINGS.gravity * delta;
 
@@ -1822,19 +1985,7 @@ function updatePhysics(delta) {
     }
     playerStats.stamina = Math.max(0, Math.min(playerStats.maxStamina, playerStats.stamina));
 
-    // Check healing temple proximity
-    if (window.healingTotemPos) {
-        const dist = playerMesh.position.distanceTo(window.healingTotemPos);
-        if (dist < 40) {
-            playerStats.hp = playerStats.maxHp;
-            playerStats.mana = playerStats.maxMana;
-            playerStats.stamina = playerStats.maxStamina;
-            if (!window.lastHealMessage || Date.now() - window.lastHealMessage > 2000) {
-                addFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 12, 0)), '✨ COMPLETAMENTE GUARITO ✨', 0x00ffff, 2.0);
-                window.lastHealMessage = Date.now();
-            }
-        }
-    }
+
 
     obstacles.forEach(o => {
         const box = new THREE.Box3().setFromObject(o);
@@ -1953,14 +2104,14 @@ function loadEnemyKnightModel(playerObj) {
 
         // Apply Team Color
         const teamColor = playerObj.teamColor || 0x2c3e50;
+        console.log(`[ENEMY-COLOR] Applying color to ${playerObj.username}:`, teamColor);
         model.traverse((child) => {
             if (child.isMesh && child.material) {
-                child.material = child.material.clone();
-                child.material.color.setHex(teamColor);
-                // Apply 30% tint of team color to preserve texture
-                child.material.color.setHex(0xffffff).lerp(new THREE.Color(teamColor), 0.3);
+                // Match Local Player Settings: 100% tint (Full Color)
+                const tintColor = new THREE.Color(0xffffff).lerp(new THREE.Color(teamColor), 1.0);
+                child.material.color.copy(tintColor);
 
-                // Remove emissive to avoid washing out texture
+                // Remove emissive to avoid washing out texture (same as local player)
                 child.material.emissive = new THREE.Color(0x000000);
                 child.material.emissiveIntensity = 0.0;
 
@@ -2136,19 +2287,7 @@ function loadEnemyKnightModel(playerObj) {
                 console.log(`[ENEMY-LOAD] Created powerupUpper for ${playerObj.username}`);
             }
 
-            if (playerObj.knightAnimations.walk && lowerBodyBones.length > 0) {
-                const originalClip = playerObj.knightAnimations.walk.getClip();
-                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'walk_lowerBody');
-                playerObj.knightAnimations.walkLower = mixer.clipAction(lowerClip);
-                playerObj.knightAnimations.walkLower.setLoop(THREE.LoopRepeat);
-            }
 
-            if (playerObj.knightAnimations.run && lowerBodyBones.length > 0) {
-                const originalClip = playerObj.knightAnimations.run.getClip();
-                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'run_lowerBody');
-                playerObj.knightAnimations.runLower = mixer.clipAction(lowerClip);
-                playerObj.knightAnimations.runLower.setLoop(THREE.LoopRepeat);
-            }
         }
 
         // Start Idle
@@ -2167,7 +2306,7 @@ function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceResta
         return false;
     }
     if (!playerObj.knightAnimations[name]) {
-        console.warn(`[ANIM-DEBUG] Animation '${name}' not found for ${playerObj.username}. Trying fallbacks.`);
+        // console.warn(`[ANIM-DEBUG] Animation '${name}' not found for ${playerObj.username}. Trying fallbacks.`);
 
         // FALLBACK CHAIN
         let fallbackName = 'idle';
@@ -2177,7 +2316,7 @@ function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceResta
 
         // Try fallback
         if (playerObj.knightAnimations[fallbackName]) {
-            console.log(`[ANIM-DEBUG] Using fallback '${fallbackName}' for '${name}'`);
+            // console.log(`[ANIM-DEBUG] Using fallback '${fallbackName}' for '${name}'`);
             // Recursive call with fallback, but ensure we don't loop infinitely
             if (fallbackName !== name) {
                 return playEnemyKnightAnimation(playerObj, fallbackName, isOneShot);
@@ -2350,7 +2489,7 @@ function updateOtherPlayersAnimations(delta) {
             if (isPoweringUp) {
                 // Layered Powerup Logic (Upper Powerup + Lower Run/Walk)
                 if (p.knightAnimations.powerupUpper && (state === 'run' || state === 'walk')) {
-                    // console.log(`[ANIM-DEBUG] ${p.username} is powering up and moving. Activating layered animations.`);
+                    console.log(`[ANIM-DEBUG] ${p.username} is powering up and moving (${state}). Activating layered animations.`);
 
                     // Stop conflicting full-body animations
                     if (p.knightAnimations.powerup && p.knightAnimations.powerup.isRunning()) p.knightAnimations.powerup.stop();
@@ -2473,6 +2612,7 @@ function switchArcherAnimation(name) {
     // Set Target Position for ADS
     if (fpsBowContainer && fpsBowContainer.children[0]) {
         const model = fpsBowContainer.children[0];
+        // FIX: Reverted Bow_FIRE to use Idle Position as requested
         const targetPos = (name === 'Bow_AIM_IDLE') ? model.userData.aimPos : model.userData.idlePos;
         if (targetPos) {
             model.userData.targetPosition = targetPos;

@@ -92,7 +92,7 @@ const hitboxHelpers = [];
 const SETTINGS = {
     speed: 400.0,
     sprintMulti: 1.4,
-    sprintStaminaCostPerSec: 1.0,
+    sprintStaminaCostPerSec: 15.0,
 
     // JUMP SETTINGS
     jumpForce: 200.0,
@@ -139,6 +139,7 @@ const SETTINGS = {
     meleeStaminaCost: 5,
     meleeKnockbackForce: 100,
 
+    manaRegen: 2.0,
     manaRegen: 2.0,
     staminaCost: 0.2,
     staminaRegen: 3.0,
@@ -585,9 +586,9 @@ function init() {
     scene.background = new THREE.Color(0x2a2a3a);
     scene.fog = new THREE.Fog(0x2a2a3a, 150, 600); // Fog più aggressiva per nascondere pop-in
 
-    // FIX: Near plane ridotto a 0.001 (minimo possibile) per evitare clipping braccia
+    // FIX: Near plane aumentato a 0.1 per risolvere Z-fighting (tremolio)
     // Le braccia sono molto vicine, serve un valore bassissimo
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.001, 1000);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     scene.add(camera); // IMPORTANT: Add camera to scene so its children are rendered
     createPlayer(); createSword(); createStaff(); createShield(); createBow();
 
@@ -602,11 +603,12 @@ function init() {
 
     seed = WORLD_SEED; setupWorld(); setupControls(); setupUIEvents();
     renderer = new THREE.WebGLRenderer({
-        antialias: true, // FIX: Enable antialias for better quality
+        antialias: true, // FIX: Enable antialias to reduce shimmering/frying
         powerPreference: 'high-performance',
-        precision: 'highp', // FIX: High precision
+        precision: 'mediump',
         alpha: false,
-        stencil: false
+        stencil: false,
+        depth: true
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // FIX: Use device pixel ratio for sharpness
     renderer.setSize(window.innerWidth, window.innerHeight);

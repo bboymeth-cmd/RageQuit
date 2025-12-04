@@ -227,7 +227,7 @@ function initMultiplayer() {
                     p.mesh.userData.isPoweringUp = true;
                     p.mesh.userData.powerupTimer = 0;
 
-                    console.log(`[NET-DEBUG] Triggering powerup for ${data.id} (Effect: ${data.type})`);
+                    // console.log(`[NET-DEBUG] Triggering powerup for ${data.id} (Effect: ${data.type})`);
                     playEnemyKnightAnimation(p, 'powerup', true);
                 }
             }
@@ -297,7 +297,7 @@ function initMultiplayer() {
                     otherPlayers[data.id].mesh.userData.attackTimer = 0;
                     playSound('swing_heavy', otherPlayers[data.id].mesh.position);
                     if (typeof playEnemyKnightAnimation === 'function') {
-                        console.log(`[NET-DEBUG] Triggering attack for ${data.id} (Melee)`);
+                        // console.log(`[NET-DEBUG] Triggering attack for ${data.id} (Melee)`);
                         playEnemyKnightAnimation(otherPlayers[data.id], 'attack', true, true); // Force restart
                     }
                 }
@@ -307,7 +307,7 @@ function initMultiplayer() {
                     playSound('whirlwind', otherPlayers[data.id].mesh.position);
                     playSound('whirlwind', otherPlayers[data.id].mesh.position);
                     if (typeof playEnemyKnightAnimation === 'function') {
-                        console.log(`[NET-DEBUG] Triggering whirlwind for ${data.id}`);
+                        // console.log(`[NET-DEBUG] Triggering whirlwind for ${data.id}`);
                         playEnemyKnightAnimation(otherPlayers[data.id], 'whirlwind', true, true); // Force restart
                     }
                 }
