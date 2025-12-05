@@ -3024,27 +3024,31 @@ function switchArcherAnimation(name) {
 
 // --- HARD RESET FUNCTION FOR RESPAWN ---
 function resetKnightAnimations() {
-    console.log('[KNIGHT] Executing Hard Animation Reset...');
-    if (knightMixer) {
-        knightMixer.stopAllAction();
-        // Uncache root to be safe
-        const root = knightMixer.getRoot();
-        knightMixer.uncacheRoot(root);
-    }
+    try {
+        console.log('[KNIGHT] Executing Hard Animation Reset...');
+        if (knightMixer) {
+            knightMixer.stopAllAction();
+            // Uncache root to be safe
+            const root = knightMixer.getRoot();
+            knightMixer.uncacheRoot(root);
+        }
 
-    currentKnightAnimName = '';
-    currentKnightAction = null;
-    isAttacking = false;
-    isWhirlwinding = false;
-    attackTimer = 0;
+        currentKnightAnimName = '';
+        currentKnightAction = null;
+        isAttacking = false;
+        isWhirlwinding = false;
+        attackTimer = 0;
 
-    // Restart Idle immediately
-    if (knightAnimations.idle) {
-        knightAnimations.idle.reset();
-        knightAnimations.idle.play();
-        knightAnimations.idle.setEffectiveWeight(1.0);
-        currentKnightAnimName = 'idle';
-        currentKnightAction = knightAnimations.idle;
+        // Restart Idle immediately
+        if (knightAnimations.idle) {
+            knightAnimations.idle.reset();
+            knightAnimations.idle.play();
+            knightAnimations.idle.setEffectiveWeight(1.0);
+            currentKnightAnimName = 'idle';
+            currentKnightAction = knightAnimations.idle;
+        }
+    } catch (e) {
+        console.error('[KNIGHT] Error in resetKnightAnimations:', e);
     }
 }
 window.resetKnightAnimations = resetKnightAnimations;

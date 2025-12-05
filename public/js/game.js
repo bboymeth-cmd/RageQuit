@@ -802,8 +802,12 @@ function respawnPlayer() {
     isBlocking = false;
 
     // FIX: Hard Animation Reset on Respawn
-    if (typeof window.resetKnightAnimations === 'function') {
-        window.resetKnightAnimations();
+    try {
+        if (typeof window.resetKnightAnimations === 'function') {
+            window.resetKnightAnimations();
+        }
+    } catch (e) {
+        console.error('[RESPAWN] Error resetting animations:', e);
     }
 
     // Mostra il messaggio
