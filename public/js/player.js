@@ -2377,6 +2377,8 @@ function loadEnemyKnightModel(playerObj) {
             if (playerObj.knightMixer) {
                 playerObj.knightMixer.stopAllAction();
                 playerObj.knightMixer.uncacheRoot(playerObj.knightModel);
+                playerObj.knightMixer = null; // FIX: Prevent access to disposed mixer
+                playerObj.knightAnimations = {}; // FIX: Clear old animations
             }
             if (playerObj.mesh) playerObj.mesh.remove(playerObj.knightModel);
             playerObj.knightModel.traverse((child) => {
@@ -2976,32 +2978,6 @@ function switchArcherAnimation(name) {
     if (!fpsArcherAnimations || !fpsArcherAnimations[name]) return;
 
     // --- HARD RESET FUNCTION FOR RESPAWN ---
-    function resetKnightAnimations() {
-        console.log('[KNIGHT] Executing Hard Animation Reset...');
-        if (knightMixer) {
-            knightMixer.stopAllAction();
-            // Uncache root to be safe
-            const root = knightMixer.getRoot();
-            knightMixer.uncacheRoot(root);
-        }
-
-        currentKnightAnimName = '';
-        currentKnightAction = null;
-        isAttacking = false;
-        isWhirlwinding = false;
-        attackTimer = 0;
-
-        // Restart Idle immediately
-        if (knightAnimations.idle) {
-            knightAnimations.idle.reset();
-            knightAnimations.idle.play();
-            knightAnimations.idle.setEffectiveWeight(1.0);
-            currentKnightAnimName = 'idle';
-            currentKnightAction = knightAnimations.idle;
-        }
-    }
-    window.resetKnightAnimations = resetKnightAnimations;
-
     const newAction = fpsArcherAnimations[name];
     if (fpsArcherCurrentAction === newAction) return; // Already playing
 
@@ -3045,6 +3021,33 @@ function switchArcherAnimation(name) {
         }
     }
 }
+
+// --- HARD RESET FUNCTION FOR RESPAWN ---
+function resetKnightAnimations() {
+    console.log('[KNIGHT] Executing Hard Animation Reset...');
+    if (knightMixer) {
+        knightMixer.stopAllAction();
+        // Uncache root to be safe
+        const root = knightMixer.getRoot();
+        knightMixer.uncacheRoot(root);
+    }
+
+    currentKnightAnimName = '';
+    currentKnightAction = null;
+    isAttacking = false;
+    isWhirlwinding = false;
+    attackTimer = 0;
+
+    // Restart Idle immediately
+    if (knightAnimations.idle) {
+        knightAnimations.idle.reset();
+        knightAnimations.idle.play();
+        knightAnimations.idle.setEffectiveWeight(1.0);
+        currentKnightAnimName = 'idle';
+        currentKnightAction = knightAnimations.idle;
+    }
+}
+window.resetKnightAnimations = resetKnightAnimations;
 
 // Global input listeners for Bow Aiming
 document.addEventListener('mousedown', (e) => {
