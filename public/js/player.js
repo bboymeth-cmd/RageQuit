@@ -3047,6 +3047,11 @@ function resetKnightAnimations() {
             currentKnightAnimName = 'idle';
             currentKnightAction = knightAnimations.idle;
         }
+
+        // FIX: Ensure Casting Bar is gone
+        if (typeof window.resetCastingState === 'function') {
+            window.resetCastingState();
+        }
     } catch (e) {
         console.error('[KNIGHT] Error in resetKnightAnimations:', e);
     }

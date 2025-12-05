@@ -70,6 +70,22 @@ function stopCasting(key) {
     }
 }
 
+// FIX: Function to force reset casting state (e.g. on death/respawn)
+function resetCastingState() {
+    castingState.active = false;
+    castingState.timer = 0;
+    castingState.ready = false;
+    castingState.keyHeld = null;
+
+    const castBar = document.getElementById('cast-bar-container');
+    if (castBar) castBar.style.display = 'none';
+
+    // Also reset channeling effects if any
+    const slots = document.querySelectorAll('.action-slot');
+    slots.forEach(slot => slot.classList.remove('channeling'));
+}
+window.resetCastingState = resetCastingState;
+
 function updateCasting(delta) {
     if (!castingState.active) return;
     castingState.timer += delta; let progress = Math.min(1, castingState.timer / castingState.maxTime);
@@ -190,8 +206,12 @@ function applyConversionTick(type) {
         if (playerStats.stamina >= cost && playerStats.hp < playerStats.maxHp) {
             playerStats.stamina -= cost;
             playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + gain);
-            // FIX: NON inviare playerHealed per conversioni - gestite solo localmente
-            // Questo previene il "burst" doppio di HP (locale + server)
+
+
+            // FIX: Notify server of HP gain to keep sync
+            if (socket && socket.connected) {
+                socket.emit('playerHealed', { amount: gain });
+            }
 
             // Mostra testo floating HP guadagnato (verde)
             createFloatingText(textPosition, `+${gain}`, '#00ff00');
@@ -202,6 +222,11 @@ function applyConversionTick(type) {
         if (playerStats.hp > cost && playerStats.mana < playerStats.maxMana) {
             playerStats.hp -= cost;
             playerStats.mana = Math.min(playerStats.maxMana, playerStats.mana + gain);
+
+            // FIX: Notify server of HP loss to keep sync
+            if (socket && socket.connected) {
+                socket.emit('playerHealed', { amount: -cost });
+            }
 
             // Mostra testo floating Mana guadagnato (blu) e HP perso (rosso)
             // Separazione maggiore in melee per evitare sovrapposizione

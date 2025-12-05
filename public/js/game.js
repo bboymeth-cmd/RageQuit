@@ -806,8 +806,12 @@ function respawnPlayer() {
         if (typeof window.resetKnightAnimations === 'function') {
             window.resetKnightAnimations();
         }
+        // FIX: Reset Casting UI
+        if (typeof window.resetCastingState === 'function') {
+            window.resetCastingState();
+        }
     } catch (e) {
-        console.error('[RESPAWN] Error resetting animations:', e);
+        console.error('[RESPAWN] Error resetting animations/casting:', e);
     }
 
     // Mostra il messaggio
