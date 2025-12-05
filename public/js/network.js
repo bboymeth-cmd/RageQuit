@@ -13,7 +13,8 @@ function sendPositionUpdate() {
     const now = Date.now();
     if (socket && socket.connected && playerMesh && !playerStats.isDead) {
         if (now - lastPositionSent >= POSITION_UPDATE_RATE) {
-            const animState = isSprinting ? 'run' : (moveForward || moveBackward || moveLeft || moveRight) ? 'walk' : 'idle';
+            // FIX: Broadcast actual speed state (walk if cooldown)
+            const animState = (isSprinting && !sprintCooldown) ? 'run' : (moveForward || moveBackward || moveLeft || moveRight) ? 'walk' : 'idle';
             socket.emit('playerMovement', {
                 position: playerMesh.position,
                 rotation: {
@@ -244,48 +245,48 @@ function initMultiplayer() {
         socket.on('playerHitResponse', (data) => {
             // CRITICAL FIX: NON modificare HP qui! Il server invia già updateHealth con HP corretto.
             // playerHitResponse serve SOLO per feedback visivo locale (flash screen, particles, etc)
-            
+
             console.log(`[PLAYER HIT] Ricevuto danno: ${data.damage}, Bloccato: ${data.isBlocking}`);
-            
+
             // Effetti visivi differenziati se BLOCK o danno normale
             if (data.isBlocking) {
                 // FEEDBACK per BLOCCO
                 console.log(`[BLOCK] Danno parato! Danno ridotto: ${Math.round(data.damage)}`);
-                
+
                 // Testo "BLOCK" prominente
                 createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 10, 0)), "BLOCK!", "#00aaff");
-                
+
                 // Flash schermo blu (invece di rosso)
                 flashScreen('blue');
-                
+
                 // Particelle blu/argento per indicare blocco
                 spawnParticles(playerMesh.position, 0x00aaff, 15, 40, 0.7, false);
-                
+
                 // Suono di blocco metallico
                 playSound('block');
-                
+
                 // Log nella chat
                 addToLog(`Attacco PARATO! (${Math.round(data.damage)} danni mitigati)`, "block-success");
-                
+
             } else if (data.damage > 0) {
                 // FEEDBACK per DANNO NORMALE (non bloccato)
-                
+
                 // Flash schermo rosso
                 flashScreen('red');
-                
+
                 // Particelle di sangue
                 spawnParticles(playerMesh.position, 0xff0000, 10, 30, 0.6, false);
-                
+
                 // Testo floating con danno
                 createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0)), `-${Math.round(data.damage)}`, "#ff0000");
-                
+
                 // Suono di impatto
                 playSound('hit');
-                
+
                 // Log nella chat
                 addToLog(`Hai subito ${Math.round(data.damage)} danni!`, "damage-taken");
             }
-            
+
             // NOTE: La morte viene gestita in updateHealth quando HP <= 0
             // Non controlliamo playerStats.hp <= 0 qui perché non abbiamo ancora l'HP aggiornato dal server
         });
@@ -329,10 +330,30 @@ function initMultiplayer() {
                     otherPlayers[data.id].mesh.userData.isAttacking = true;
                     otherPlayers[data.id].mesh.userData.attackTimer = 0;
 
-                    if (typeof playEnemyKnightAnimation === 'function') playEnemyKnightAnimation(otherPlayers[data.id], 'cast', true);
+                    if (typeof playEnemyKnightAnimation === 'function') playEnemyKnightAnimation(otherPlayers[data.id], 'cast', true, true);
                 }
             }
         });
+
+        socket.on('playerStartCasting', (data) => {
+            if (otherPlayers[data.id]) {
+                console.log(`[NET] ${otherPlayers[data.id].username} started casting (isHoldingSpell=true)`);
+                otherPlayers[data.id].mesh.userData.isHoldingSpell = true;
+                if (typeof playEnemyKnightAnimation === 'function') {
+                    playEnemyKnightAnimation(otherPlayers[data.id], 'castHold', false);
+                }
+            }
+        });
+
+        socket.on('playerStopCasting', (data) => {
+            if (otherPlayers[data.id]) {
+                // console.log(`[NET] ${otherPlayers[data.id].username} stopped casting`);
+                otherPlayers[data.id].mesh.userData.isHoldingSpell = false;
+                // Non forzare idle qui, perché subito dopo arriverà 'enemyAttacked' con 'cast'
+                // Ma se il cast è stato annullato, tornerà idle grazie al fix T-Pose o al prossimo update
+            }
+        });
+
         socket.on('playerPushed', (data) => {
             if (data.forceY) { velocity.y = data.forceY; }
             if (data.forceVec) { velocity.add(new THREE.Vector3(data.forceVec.x, data.forceVec.y, data.forceVec.z)); }
@@ -351,17 +372,17 @@ function initMultiplayer() {
                 playerStats.hp = data.hp;
                 updateUI();
                 console.log(`[HP SYNC] Il mio HP aggiornato dal server: ${data.hp}`);
-                
+
                 // CRITICAL: Se HP = 0, aspetta playerDied dal server (non gestiamo morte qui)
                 // playerDied arriverà subito dopo e gestirà animazione/respawn
             } else if (otherPlayers[data.id]) {
                 // FIX: Inizializza maxHp se non esiste
                 if (!otherPlayers[data.id].maxHp) otherPlayers[data.id].maxHp = 100;
-                
+
                 // CRITICAL: Salva HP vecchio PRIMA di aggiornare per logging
                 const oldHp = otherPlayers[data.id].hp || 100;
                 const damage = oldHp - data.hp;
-                
+
                 // Aggiorna HP
                 otherPlayers[data.id].hp = data.hp;
                 updateEnemyHealthBar(otherPlayers[data.id], data.hp);
@@ -380,7 +401,7 @@ function initMultiplayer() {
                 // Reset completo stato del player respawnato
                 otherPlayers[data.id].mesh.userData.isDead = false;
                 otherPlayers[data.id].mesh.visible = true;
-                
+
                 // FIX: Ferma animazione death e torna a idle
                 if (otherPlayers[data.id].knightAnimations && otherPlayers[data.id].knightAnimations.death) {
                     otherPlayers[data.id].knightAnimations.death.stop();
@@ -453,7 +474,7 @@ function initMultiplayer() {
                 document.getElementById('message').innerHTML = "SEI STATO SCONFITTO<br><span style='font-size:16px'>Respawn in 3 secondi...</span>";
                 document.getElementById('message').style.display = "block"; document.exitPointerLock();
                 spawnParticles(playerMesh.position, 0xff0000, 50, 50, 1.0, true);
-                
+
                 // ANIMAZIONE DEATH per giocatore locale
                 if (typeof playKnightAnimation === 'function' && knightModel && knightModel.visible) {
                     playKnightAnimation('death', true);
@@ -464,7 +485,7 @@ function initMultiplayer() {
                 } else {
                     playerMesh.visible = false;
                 }
-                
+
                 console.log('[CLIENT] Io sono morto - respawn automatico in 3 secondi');
 
                 // RESPAWN AUTOMATICO dopo 3 secondi
@@ -479,12 +500,12 @@ function initMultiplayer() {
                 otherPlayers[data.id].hp = 0;
                 otherPlayers[data.id].mesh.userData.isDead = true;
                 updateEnemyHealthBar(otherPlayers[data.id], 0);
-                
+
                 addToLog(otherPlayers[data.id].username + " eliminato!", "kill");
                 spawnParticles(otherPlayers[data.id].mesh.position, 0xff0000, 50, 50, 1.0, true);
-                
+
                 console.log(`[DEATH] Player ${data.id} morto - HP settato a 0, isDead=true`);
-                
+
                 // ANIMAZIONE DEATH per nemico
                 if (typeof playEnemyKnightAnimation === 'function' && otherPlayers[data.id].knightModel) {
                     playEnemyKnightAnimation(otherPlayers[data.id], 'death', true);
@@ -497,7 +518,7 @@ function initMultiplayer() {
                 } else {
                     otherPlayers[data.id].mesh.visible = false;
                 }
-                
+
                 // Non rimuovere il giocatore - sarà rimostrato quando respawna
             }
 
@@ -681,11 +702,11 @@ function updateEnemyHealthBar(playerObj, hp) {
         if (!playerObj.maxHp) {
             playerObj.maxHp = 100;
         }
-        
+
         const oldHp = playerObj.hp;
         const validHp = (hp !== undefined && hp !== null) ? hp : (playerObj.hp || 100);
         const scale = Math.max(0, Math.min(1, validHp / playerObj.maxHp));
-        
+
         // DEBUG: Log dettagliato per capire il bug del doppio danno
         const damage = oldHp - validHp;
         console.log(`[HP BAR DETAILED] Player ${playerObj.username}:`);
@@ -693,7 +714,7 @@ function updateEnemyHealthBar(playerObj, hp) {
         console.log(`  - MaxHP: ${playerObj.maxHp}`);
         console.log(`  - Scale calcolata: ${scale.toFixed(3)} (${(scale * 100).toFixed(1)}%)`);
         console.log(`  - Parametro hp ricevuto: ${hp}`);
-        
+
         playerObj.mesh.userData.hpBar.scale.x = scale;
         playerObj.mesh.userData.hpBar.material.color.setHex(scale > 0.5 ? 0x00ff00 : (scale > 0.2 ? 0xffa500 : 0xff0000));
     }
@@ -701,7 +722,50 @@ function updateEnemyHealthBar(playerObj, hp) {
 
 function removeOtherPlayer(id) {
     if (otherPlayers[id]) {
-        scene.remove(otherPlayers[id].mesh);
+        const p = otherPlayers[id];
+
+        // 1. CLEANUP ANIMATIONS (SERIAL KILLER MODE)
+        if (p.knightMixer) {
+            p.knightMixer.stopAllAction();
+            // Uncache everything attached to this root
+            p.knightMixer.uncacheRoot(p.knightMixer.getRoot());
+
+            // Explicitly uncache known clips
+            if (p.knightAnimations) {
+                Object.values(p.knightAnimations).forEach(action => {
+                    if (action) {
+                        action.stop();
+                        action.reset(); // Reset state
+                        const clip = action.getClip();
+                        if (clip) p.knightMixer.uncacheClip(clip);
+                    }
+                });
+            }
+        }
+
+        // 2. DEEP DISPOSE OF VISUAL ASSETS
+        if (p.mesh) {
+            p.mesh.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(m => {
+                                if (m.map) m.map.dispose();
+                                if (m.emissiveMap) m.emissiveMap.dispose();
+                                m.dispose();
+                            });
+                        } else {
+                            if (child.material.map) child.material.map.dispose();
+                            if (child.material.emissiveMap) child.material.emissiveMap.dispose();
+                            child.material.dispose();
+                        }
+                    }
+                }
+            });
+            scene.remove(p.mesh);
+        }
+
         delete otherPlayers[id];
         // Mark as recently removed to prevent re-add within dedupe window
         recentlyRemoved[id] = Date.now();

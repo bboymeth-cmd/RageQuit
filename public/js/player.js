@@ -43,7 +43,28 @@ function loadKnightModel(callback) {
     console.log('=== LOADING KNIGHT MET.GLB ===');
     const loader = new THREE.GLTFLoader();
 
-    loader.load('./models/Knight Met.glb', (gltf) => {
+    const cacheBuster = Date.now();
+    loader.load(`./models/Knight_Met_2.glb?v=${cacheBuster}`, (gltf) => {
+        // DEFENSIVE LOADING: Cleanup existing model if present
+        if (knightModel) {
+            console.warn('[KNIGHT] Existing model detected! Cleaning up...');
+            if (knightMixer) {
+                knightMixer.stopAllAction();
+                knightMixer.uncacheRoot(knightModel);
+            }
+            if (playerMesh) playerMesh.remove(knightModel);
+            knightModel.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                        else child.material.dispose();
+                    }
+                }
+            });
+            knightModel = null;
+        }
+
         knightModel = gltf.scene;
         knightModel.scale.set(10, 10, 10);
         knightModel.position.set(0, -6.0, 0); // Lowered to touch ground (Player pivot is at y=6)
@@ -119,59 +140,38 @@ function loadKnightModel(callback) {
 
             gltf.animations.forEach((clip, index) => {
                 const name = clip.name.toLowerCase();
+                if (name.includes('.001') || name.includes('mixamo.com')) return; // SKIP DUPLICATES & JUNK
+
+                // CLIP TRIMMING (Stop 2 Frames Early)
+                // Trim 0.06s from one-shot animations to prevent T-pose/Loop glitches at the end
+                if (name.includes('attack') || name.includes('jump') || name.includes('leap') ||
+                    name.includes('whirlwind') || name.includes('spin') || name.includes('cast') ||
+                    name.includes('powerup') || name.includes('death') || name.includes('die')) {
+                    if (clip.duration > 0.1) {
+                        clip.duration -= 0.06;
+                        // console.log(`  [TRIM] Trimmed 0.06s from ${clip.name}. New duration: ${clip.duration.toFixed(3)}s`);
+                    }
+                }
+
                 console.log(`  [${index}] "${clip.name}" (${clip.duration.toFixed(2)}s)`);
 
                 // Mappa in base al nome e configura loop appropriati
                 if (name.includes('walk') && !name.includes('block') || name.includes('wal')) {
-                    // WALK: animazione per tasto W, rimuove root motion
-                    const originalClip = clip;
-                    const tracks = [];
-
-                    for (let i = 0; i < originalClip.tracks.length; i++) {
-                        const track = originalClip.tracks[i];
-                        const trackName = track.name;
-                        const boneName = trackName.split('.')[0];
-                        const propertyName = trackName.split('.')[1];
-
-                        // Filtra tracce di posizione da hips/mixamorig per evitare movimento in avanti
-                        if (propertyName === 'position' &&
-                            (boneName.toLowerCase().includes('hips') || boneName.toLowerCase().includes('mixamorig'))) {
-                            console.log(`      [Walk] Filtrata traccia root motion: ${trackName}`);
-                            continue;
-                        }
-
-                        tracks.push(track);
-                    }
-
-                    const walkClip = new THREE.AnimationClip(originalClip.name, originalClip.duration, tracks);
-                    knightAnimations.walk = knightMixer.clipAction(walkClip);
+                    // WALK: Use original clip directly (Root Motion removed in source)
+                    knightAnimations.walk = knightMixer.clipAction(clip);
+                    knightAnimations.walk.setLoop(THREE.LoopRepeat);
+                    knightAnimations.walk.clampWhenFinished = false;
+                    console.log('    → WALK (loop, original clip used)');
                     knightAnimations.walk.setLoop(THREE.LoopRepeat);
                     knightAnimations.walk.clampWhenFinished = false;
                     console.log('    → WALK (loop, root motion removed - tasto W)');
                 }
                 else if (name.includes('strafe')) {
-                    // Crea una copia del clip senza root motion
-                    const originalClip = clip;
-                    const tracks = [];
-
-                    for (let i = 0; i < originalClip.tracks.length; i++) {
-                        const track = originalClip.tracks[i];
-                        const trackName = track.name;
-
-                        if (trackName.includes('.position') &&
-                            (trackName.toLowerCase().includes('hips') ||
-                                trackName.toLowerCase().includes('mixamorig') ||
-                                trackName === 'position')) {
-                            console.log('    [STRAFE] Skipping root motion track:', trackName);
-                            continue;
-                        }
-
-                        tracks.push(track);
-                    }
-
-                    const noRootMotionClip = new THREE.AnimationClip(originalClip.name + '_NoRootMotion', originalClip.duration, tracks);
-
-                    knightAnimations.strafe = knightMixer.clipAction(noRootMotionClip);
+                    // STRAFE: Use original clip directly
+                    knightAnimations.strafe = knightMixer.clipAction(clip);
+                    knightAnimations.strafe.setLoop(THREE.LoopRepeat);
+                    knightAnimations.strafe.clampWhenFinished = false;
+                    console.log('    → STRAFE (loop, original clip used)');
                     knightAnimations.strafe.setLoop(THREE.LoopRepeat);
                     knightAnimations.strafe.clampWhenFinished = false;
                     console.log('    → STRAFE (loop, no root motion)');
@@ -183,65 +183,22 @@ function loadKnightModel(callback) {
                     console.log('    → IDLE (loop)');
                 }
                 else if (name.includes('run')) {
-                    // Crea una copia del clip senza root motion (traslazione)
-                    const originalClip = clip;
-                    const tracks = [];
-
-                    for (let i = 0; i < originalClip.tracks.length; i++) {
-                        const track = originalClip.tracks[i];
-                        const trackName = track.name;
-
-                        // Escludi i track di posizione del root/hips che causano il movimento in avanti
-                        if (trackName.includes('.position') &&
-                            (trackName.toLowerCase().includes('hips') ||
-                                trackName.toLowerCase().includes('mixamorig') ||
-                                trackName === 'position')) {
-                            console.log('    [RUN] Skipping root motion track:', trackName);
-                            continue; // Skip questo track
-                        }
-
-                        tracks.push(track);
-                    }
-
-                    // Crea nuovo clip senza root motion
-                    const noRootMotionClip = new THREE.AnimationClip(originalClip.name + '_NoRootMotion', originalClip.duration, tracks);
-
-                    knightAnimations.run = knightMixer.clipAction(noRootMotionClip);
+                    // RUN: Use original clip directly
+                    knightAnimations.run = knightMixer.clipAction(clip);
+                    knightAnimations.run.setLoop(THREE.LoopRepeat);
+                    knightAnimations.run.clampWhenFinished = false;
+                    console.log('    → RUN (loop, original clip used)');
                     knightAnimations.run.setLoop(THREE.LoopRepeat);
                     knightAnimations.run.clampWhenFinished = false;
                     console.log('    → RUN (loop, no root motion)');
                 }
                 else if (name.includes('jump') || name.includes('leap')) {
-                    // Jump originale + variante sul posto (senza root motion) per uso durante powerup
-                    knightAnimations.jumpOriginal = knightMixer.clipAction(clip);
-                    knightAnimations.jumpOriginal.setLoop(THREE.LoopOnce);
-                    knightAnimations.jumpOriginal.clampWhenFinished = false;
-                    knightAnimations.jumpOriginal.repetitions = 1;
-                    // Crea versione spot filtrando position dei bone root/hips/mixamorig E quaternion upper body
-                    const originalClip = clip;
-                    const spotTracks = [];
-                    for (let t = 0; t < originalClip.tracks.length; t++) {
-                        const track = originalClip.tracks[t];
-                        const tl = track.name.toLowerCase();
-                        // Filtra position su root/hips
-                        if (tl.includes('.position') && (tl.includes('hips') || tl.includes('mixamorig') || tl === 'position')) {
-                            continue;
-                        }
-                        // Filtra quaternion su spine/chest per evitare rotazione upper body
-                        if (tl.includes('.quaternion') && (tl.includes('spine') || tl.includes('chest'))) {
-                            console.log(`      [Jump] Filtrata rotazione upper body: ${track.name}`);
-                            continue;
-                        }
-                        spotTracks.push(track);
-                    }
-                    const spotClip = new THREE.AnimationClip(originalClip.name + '_Spot', originalClip.duration, spotTracks);
-                    knightAnimations.jumpSpot = knightMixer.clipAction(spotClip);
-                    knightAnimations.jumpSpot.setLoop(THREE.LoopOnce);
-                    knightAnimations.jumpSpot.clampWhenFinished = false;
-                    knightAnimations.jumpSpot.repetitions = 1;
-                    // Imposta di default jump = variante sul posto (sempre sul posto)
-                    knightAnimations.jump = knightAnimations.jumpSpot;
-                    console.log('    → JUMP (once, SPOT variant always used)');
+                    // JUMP: Use original clip directly
+                    knightAnimations.jump = knightMixer.clipAction(clip);
+                    knightAnimations.jump.setLoop(THREE.LoopOnce);
+                    knightAnimations.jump.clampWhenFinished = false;
+                    knightAnimations.jump.repetitions = 1;
+                    console.log('    → JUMP (once, original clip used)');
                 }
                 else if ((name.includes('attack') && name.includes('1')) || name === 'attack 1' || name === 'attack1') {
                     knightAnimations.attack = knightMixer.clipAction(clip);
@@ -258,25 +215,12 @@ function loadKnightModel(callback) {
                     console.log('    → CAST 1 (once, clamp finish - spell casting)');
                 }
                 else if (name.includes('whirlwind') || name.includes('180') || name.includes('spin')) {
-                    // Whirlwind sul posto: rimuovi root motion (tracce position di hips/root)
-                    const originalClip = clip;
-                    const tracks = [];
-                    for (let i = 0; i < originalClip.tracks.length; i++) {
-                        const track = originalClip.tracks[i];
-                        const trackName = track.name.toLowerCase();
-                        // Filtra qualsiasi position su root/hips/mixamorig
-                        if (trackName.includes('.position') && (trackName.includes('hips') || trackName.includes('mixamorig') || trackName === 'position')) {
-                            console.log('    [WHIRLWIND] Removed root motion track:', track.name);
-                            continue;
-                        }
-                        tracks.push(track);
-                    }
-                    const spotClip = new THREE.AnimationClip(originalClip.name + '_Spot', originalClip.duration, tracks);
-                    knightAnimations.whirlwind = knightMixer.clipAction(spotClip);
+                    // WHIRLWIND: Use original clip directly
+                    knightAnimations.whirlwind = knightMixer.clipAction(clip);
                     knightAnimations.whirlwind.setLoop(THREE.LoopOnce);
-                    knightAnimations.whirlwind.clampWhenFinished = false;
+                    knightAnimations.whirlwind.clampWhenFinished = true; // FIX: Clamp to prevent reset to frame 0
                     knightAnimations.whirlwind.repetitions = 1;
-                    console.log('    → WHIRLWIND (once, SPOT spin, no root motion)');
+                    console.log('    → WHIRLWIND (once, original clip used)');
                 }
                 else if (name.includes('block') && name.includes('idle')) {
                     knightAnimations.blockIdle = knightMixer.clipAction(clip);
@@ -315,49 +259,94 @@ function loadKnightModel(callback) {
                     isAttacking = false;
                     minAnimDuration = 0;
                     // Non resettare subito currentKnightAnimName per evitare scatti
-                    setTimeout(() => {
-                        if (currentKnightAnimName === 'attack') {
-                            currentKnightAnimName = '';
-                        }
-                    }, 50);
+                    // T-POSE FIX: Restore idle immediately
+                    if (knightAnimations.idle) {
+                        knightAnimations.idle.setEffectiveWeight(1.0);
+                        knightAnimations.idle.play();
+                    }
+                    // FADE OUT FIX: Release weight so Dynamic Idle takes over
+                    e.action.fadeOut(0.2);
+
+                    // IMMEDIATE RESET: No delay to prevent gaps
+                    if (currentKnightAnimName === 'attack') {
+                        currentKnightAnimName = '';
+                    }
                 } else if (e.action === knightAnimations.attackUpper) {
                     console.log('[KNIGHT] ✓ Layered attack upper complete');
                     isAttacking = false;
                     minAnimDuration = 0;
-                    setTimeout(() => {
-                        if (currentKnightAnimName === 'attack_layered') {
-                            currentKnightAnimName = '';
+                    // SMART RESTORE: Check movement to prevent T-Pose/Glitch
+                    const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+                    if (isMoving) {
+                        // Restore movement animation immediately
+                        const moveAnim = (isSprinting && !sprintCooldown && knightAnimations.run) ? knightAnimations.run : knightAnimations.walk;
+                        if (moveAnim) {
+                            moveAnim.setEffectiveWeight(1.0);
+                            moveAnim.play();
+                            // Keep idle low but alive
+                            if (knightAnimations.idle) knightAnimations.idle.setEffectiveWeight(0.01);
                         }
-                    }, 50);
+                    } else {
+                        // Not moving, restore idle
+                        if (knightAnimations.idle) {
+                            knightAnimations.idle.setEffectiveWeight(1.0);
+                            knightAnimations.idle.play();
+                        }
+                    }
+
+                    // Stop the upper action explicitly to clear it
+                    // FIX: DO NOT STOP immediately. Let it hold (clamped) until next anim starts.
+                    // e.action.stop();
+                    // FADE OUT FIX: Release weight so Dynamic Idle takes over
+                    e.action.fadeOut(0.2);
+
+                    // IMMEDIATE RESET
+                    if (currentKnightAnimName === 'attack_layered') {
+                        currentKnightAnimName = '';
+                    }
                 } else if (e.action === knightAnimations.whirlwind) {
                     console.log('[KNIGHT] ✓ Whirlwind complete');
                     minAnimDuration = 0;
                     // Delay per transizione fluida
-                    setTimeout(() => {
-                        if (currentKnightAnimName === 'whirlwind') {
-                            currentKnightAnimName = '';
-                        }
-                    }, 50);
+                    // T-POSE FIX: Restore idle immediately
+                    if (knightAnimations.idle) {
+                        knightAnimations.idle.setEffectiveWeight(1.0);
+                        knightAnimations.idle.play();
+                    }
+                    // FADE OUT FIX: Release weight so Dynamic Idle takes over
+                    e.action.fadeOut(0.2);
+
+                    // IMMEDIATE RESET
+                    if (currentKnightAnimName === 'whirlwind') {
+                        currentKnightAnimName = '';
+                    }
                 } else if (e.action === knightAnimations.powerup) {
                     console.log('[KNIGHT] ✓ Powerup complete');
                     minAnimDuration = 0;
-                    setTimeout(() => {
-                        if (currentKnightAnimName === 'powerup') {
-                            currentKnightAnimName = '';
-                        }
-                    }, 50);
+                    // T-POSE FIX: Restore idle immediately
+                    if (knightAnimations.idle) {
+                        knightAnimations.idle.setEffectiveWeight(1.0);
+                        knightAnimations.idle.play();
+                    }
+                    // FADE OUT FIX: Release weight so Dynamic Idle takes over
+                    e.action.fadeOut(0.2);
+
+                    // IMMEDIATE RESET
+                    if (currentKnightAnimName === 'powerup') {
+                        currentKnightAnimName = '';
+                    }
                 } else if (e.action === knightAnimations.powerupUpper) {
                     console.log('[KNIGHT] ✓ Layered powerup complete');
                     minAnimDuration = 0;
-                    setTimeout(() => {
-                        if (currentKnightAnimName === 'powerup_layered') {
-                            currentKnightAnimName = '';
-                        }
-                    }, 50);
+                    // IMMEDIATE RESET
+                    if (currentKnightAnimName === 'powerup_layered') {
+                        currentKnightAnimName = '';
+                    }
                 }
             });
 
             // Identifica bone per layering upper/lower body
+            let hipsBone = null;
             knightModel.traverse((node) => {
                 if (node.isBone) {
                     const boneName = node.name.toLowerCase();
@@ -374,49 +363,71 @@ function loadKnightModel(callback) {
                         boneName.includes('thigh') || boneName.includes('calf') ||
                         boneName.includes('foot') || boneName.includes('toe')) {
                         lowerBodyBones.push(node);
+                        if (boneName.includes('hips') || boneName.includes('mixamorig:hips')) {
+                            hipsBone = node;
+                        }
                     }
                 }
             });
             console.log(`[KNIGHT] Bone layering: ${upperBodyBones.length} upper, ${lowerBodyBones.length} lower`);
 
             // Crea clip layered per blockIdle (upper body only) e strafe (lower body only)
+            // Crea clip layered per blockIdle (upper body only) e strafe (lower body only)
             if (knightAnimations.blockIdle && upperBodyBones.length > 0) {
                 const originalClip = knightAnimations.blockIdle.getClip();
-                const upperClip = createLayeredClip(originalClip, upperBodyBones, 'blockIdle_upperBody');
+                // FIX: Include Hips Rotation! Otherwise shield points wrong way (left) because body isn't turned.
+                const rotOnlyBones = hipsBone ? [hipsBone] : [];
+                const upperClip = createAdvancedLayeredClip(originalClip, upperBodyBones, rotOnlyBones, null, 'blockIdle_upperBody_withHipsRot');
+
                 knightAnimations.blockIdleUpper = knightMixer.clipAction(upperClip);
                 knightAnimations.blockIdleUpper.setLoop(THREE.LoopRepeat);
-                console.log('[KNIGHT] ✓ Created blockIdle upper body layer');
+                console.log('[KNIGHT] ✓ Created blockIdle upper body layer (with hips rotation)');
             }
             if (knightAnimations.strafe && lowerBodyBones.length > 0) {
                 const originalClip = knightAnimations.strafe.getClip();
-                const lowerClip = createLayeredClip(originalClip, lowerBodyBones, 'strafe_lowerBody');
+                // Lower body (full) MA hips solo posizione
+                const lowerNoHips = lowerBodyBones.filter(b => b !== hipsBone);
+                const posOnlyBones = hipsBone ? [hipsBone] : [];
+                const lowerClip = createAdvancedLayeredClip(originalClip, lowerNoHips, null, posOnlyBones, 'strafe_lowerBody');
+
                 knightAnimations.strafeLower = knightMixer.clipAction(lowerClip);
                 knightAnimations.strafeLower.setLoop(THREE.LoopRepeat);
-                console.log('[KNIGHT] ✓ Created strafe lower body layer');
+                console.log('[KNIGHT] ✓ Created strafe lower body layer (hips pos only)');
             }
-            // Layer per ATTACK (upper body) e WALK/RUN (lower body)
+            // Layer per ATTACK (upper body + HIPS ROTATION) e WALK/RUN (lower body)
             if (knightAnimations.attack && upperBodyBones.length > 0) {
                 const attackClip = knightAnimations.attack.getClip();
-                const attackUpperClip = createLayeredClip(attackClip, upperBodyBones, 'attack_upperBody');
+                // Include upper body (full) AND hips (rotation only)
+                const rotOnlyBones = hipsBone ? [hipsBone] : [];
+                const attackUpperClip = createAdvancedLayeredClip(attackClip, upperBodyBones, rotOnlyBones, null, 'attack_upperBody_withHipsRot');
+
                 knightAnimations.attackUpper = knightMixer.clipAction(attackUpperClip);
                 knightAnimations.attackUpper.setLoop(THREE.LoopOnce);
-                knightAnimations.attackUpper.clampWhenFinished = true;
+                knightAnimations.attackUpper.clampWhenFinished = true; // FIX: Clamp to prevent T-pose gap
                 knightAnimations.attackUpper.repetitions = 1;
-                console.log('[KNIGHT] ✓ Created attack upper body layer');
+                console.log('[KNIGHT] ✓ Created attack upper body layer (with hips rotation)');
             }
             if (knightAnimations.walk && lowerBodyBones.length > 0) {
                 const walkClip = knightAnimations.walk.getClip();
-                const walkLowerClip = createLayeredClip(walkClip, lowerBodyBones, 'walk_lowerBody');
+                // Lower body (full) MA hips solo posizione (per evitare conflitti rotazione con attack)
+                const lowerNoHips = lowerBodyBones.filter(b => b !== hipsBone);
+                const posOnlyBones = hipsBone ? [hipsBone] : [];
+                const walkLowerClip = createAdvancedLayeredClip(walkClip, lowerNoHips, null, posOnlyBones, 'walk_lowerBody');
+
                 knightAnimations.walkLower = knightMixer.clipAction(walkLowerClip);
                 knightAnimations.walkLower.setLoop(THREE.LoopRepeat);
-                console.log('[KNIGHT] ✓ Created walk lower body layer');
+                console.log('[KNIGHT] ✓ Created walk lower body layer (hips pos only)');
             }
             if (knightAnimations.run && lowerBodyBones.length > 0) {
                 const runClip = knightAnimations.run.getClip();
-                const runLowerClip = createLayeredClip(runClip, lowerBodyBones, 'run_lowerBody');
+                // Lower body (full) MA hips solo posizione
+                const lowerNoHips = lowerBodyBones.filter(b => b !== hipsBone);
+                const posOnlyBones = hipsBone ? [hipsBone] : [];
+                const runLowerClip = createAdvancedLayeredClip(runClip, lowerNoHips, null, posOnlyBones, 'run_lowerBody');
+
                 knightAnimations.runLower = knightMixer.clipAction(runLowerClip);
                 knightAnimations.runLower.setLoop(THREE.LoopRepeat);
-                console.log('[KNIGHT] ✓ Created run lower body layer');
+                console.log('[KNIGHT] ✓ Created run lower body layer (hips pos only)');
             }
             // Layer per POWERUP (upper body)
             if (knightAnimations.powerup && upperBodyBones.length > 0) {
@@ -424,7 +435,7 @@ function loadKnightModel(callback) {
                 const puUpperClip = createLayeredClip(puClip, upperBodyBones, 'powerup_upperBody');
                 knightAnimations.powerupUpper = knightMixer.clipAction(puUpperClip);
                 knightAnimations.powerupUpper.setLoop(THREE.LoopOnce);
-                knightAnimations.powerupUpper.clampWhenFinished = true;
+                knightAnimations.powerupUpper.clampWhenFinished = true; // FIX: Clamp to prevent T-pose gap
                 knightAnimations.powerupUpper.repetitions = 1;
                 console.log('[KNIGHT] ✓ Created powerup upper body layer');
             }
@@ -453,7 +464,7 @@ function loadKnightModel(callback) {
                 const jumpLowerClip = new THREE.AnimationClip('jump_lowerBody_noRotation', jumpClip.duration, tracks);
                 knightAnimations.jumpLower = knightMixer.clipAction(jumpLowerClip);
                 knightAnimations.jumpLower.setLoop(THREE.LoopOnce);
-                knightAnimations.jumpLower.clampWhenFinished = false;
+                knightAnimations.jumpLower.clampWhenFinished = true; // FIX: Clamp to prevent T-pose gap
                 knightAnimations.jumpLower.repetitions = 1;
                 console.log('[KNIGHT] ✓ Created jump lower body layer (no upper rotation)');
             }
@@ -932,6 +943,116 @@ function createLayeredClip(originalClip, includeBones, clipName) {
     return new THREE.AnimationClip(clipName, originalClip.duration, filteredTracks);
 }
 
+function createStaticClip(originalClip, time, clipName) {
+    // Crea un clip statico campionando l'originale a un tempo specifico
+    if (!originalClip) return null;
+
+    const tracks = [];
+    originalClip.tracks.forEach((track) => {
+        const times = [0, 1]; // Durata fittizia di 1s
+        const values = [];
+
+        // Campiona il valore al tempo specificato
+        // Nota: Questo è un campionamento semplificato, assume interpolazione lineare o step
+        // Per precisione assoluta servirebbe interpolare, ma per "hold" va bene prendere il keyframe più vicino o il primo
+
+        // Trova i valori grezzi dal track originale
+        // THREE.KeyframeTrack non ha un metodo facile per "getAt(time)", quindi facciamo una copia del primo valore
+        // o cerchiamo di interpolare manualmente. Per semplicità, prendiamo il valore a metà array se time è ~0.5
+
+        // APPROCCIO MIGLIORE: Usiamo AnimationAction per campionare? No, siamo in fase di setup.
+        // Facciamo un clone del track ma con un solo keyframe ripetuto.
+
+        const stride = track.getValueSize();
+        const buffer = track.values;
+        const numKeys = track.times.length;
+
+        // Cerchiamo l'indice del keyframe più vicino al tempo desiderato
+        let index = 0;
+        for (let i = 0; i < numKeys; i++) {
+            if (track.times[i] >= time) {
+                index = i;
+                break;
+            }
+        }
+
+        // Copia i valori di quel keyframe
+        const value = [];
+        for (let k = 0; k < stride; k++) {
+            value.push(buffer[index * stride + k]);
+        }
+
+        // Crea due keyframe identici per fare un loop statico
+        const newValues = [...value, ...value];
+
+        // Crea il nuovo track dello stesso tipo
+        const TrackConstructor = track.constructor;
+        tracks.push(new TrackConstructor(track.name, times, newValues));
+    });
+
+    return new THREE.AnimationClip(clipName, 1.0, tracks);
+}
+
+function createAdvancedLayeredClip(originalClip, fullBones, rotOnlyBones, posOnlyBones, clipName) {
+    // Crea un clip che include:
+    // - TUTTI i track per i bone in fullBones
+    // - SOLO i track QUATERNION per i bone in rotOnlyBones
+    // - SOLO i track POSITION per i bone in posOnlyBones
+    if (!originalClip) return null;
+
+    const filteredTracks = [];
+    originalClip.tracks.forEach((track) => {
+        const boneName = track.name.split('.')[0];
+        const propName = track.name.split('.')[1]; // .position, .quaternion, .scale
+
+        // Check full bones
+        const isFull = fullBones && fullBones.some(bone => bone.name === boneName);
+        if (isFull) {
+            filteredTracks.push(track);
+            return;
+        }
+
+        // Check rotation only bones
+        const isRot = rotOnlyBones && rotOnlyBones.some(bone => bone.name === boneName);
+        if (isRot && propName === 'quaternion') {
+            filteredTracks.push(track);
+            return;
+        }
+
+        // Check position only bones
+        const isPos = posOnlyBones && posOnlyBones.some(bone => bone.name === boneName);
+        if (isPos && propName === 'position') {
+            filteredTracks.push(track);
+            return;
+        }
+    });
+
+    if (filteredTracks.length === 0) return originalClip;
+    return new THREE.AnimationClip(clipName, originalClip.duration, filteredTracks);
+}
+
+function stopLayeredActions(excludeActions = []) {
+    // Helper per fermare forzatamente tutte le azioni layered
+    // Questo previene che rimangano attive con weight residui che corrompono altre animazioni
+    const layeredActions = [
+        knightAnimations.attackUpper,
+        knightAnimations.runLower,
+        knightAnimations.walkLower,
+        knightAnimations.strafeLower,
+        knightAnimations.powerupUpper,
+        knightAnimations.blockIdleUpper,
+        knightAnimations.jumpLower
+    ];
+
+    layeredActions.forEach(action => {
+        if (action && action.isRunning() && !excludeActions.includes(action)) {
+            action.stop();
+            action.setEffectiveWeight(0);
+            action.setEffectiveTimeScale(1.0);
+        }
+    });
+}
+
 function playKnightAnimation(animName, forceRestart = false) {
     if (!knightMixer || !knightAnimations[animName]) return;
 
@@ -943,33 +1064,65 @@ function playKnightAnimation(animName, forceRestart = false) {
     if (animName === 'attack' && (moveForward || moveBackward || moveLeft || moveRight) && knightAnimations.attackUpper && (knightAnimations.walkLower || knightAnimations.runLower)) {
         const fadeTime = 0.15;
         // Determina clip gambe (run se sprint, altrimenti walk)
-        // Animazione segue l'input del giocatore, non la stamina
-        const isSprintingActive = isSprinting && moveForward;
+        // Animazione segue l'input del giocatore, MA ORA rispetta anche la stamina (physically accurate)
+        const isSprintingActive = isSprinting && moveForward && !sprintCooldown;
         const legsAction = isSprintingActive && knightAnimations.runLower ? knightAnimations.runLower : knightAnimations.walkLower;
-        // Fade out altri layer (eccetto idle)
+
+        // CORRUPTION FIX: Ferma altri layer ma mantieni le gambe se servono
+        stopLayeredActions(legsAction ? [legsAction] : []);
+
+        // FIX: Keep idle at 1% for safety (Anti T-Pose)
+        if (knightAnimations.idle) knightAnimations.idle.setEffectiveWeight(0.01);
+
+        // Fade out altri layer (eccetto idle che gestiamo sopra)
+        // Fade out altri layer (eccetto idle che gestiamo sopra)
         Object.entries(knightAnimations).forEach(([k, action]) => {
             if (action && action.isRunning() && action !== legsAction && action !== knightAnimations.idle && action !== knightAnimations.attackUpper) {
-                action.fadeOut(fadeTime);
+                // ANTI-ACCUMULATION FIX: Se peso basso, STOP immediato
+                if (action.getEffectiveWeight() < 0.1) {
+                    action.stop();
+                    action.setEffectiveWeight(0);
+                } else {
+                    action.fadeOut(fadeTime);
+                }
             }
         });
         // Avvia gambe
         if (legsAction) {
-            if (!legsAction.isRunning()) legsAction.reset();
+            if (!legsAction.isRunning()) {
+                legsAction.reset();
+                // SYNC FIX: Se l'animazione full-body corrispondente è attiva, sincronizza il tempo
+                // Questo evita che le gambe "scattino" a una posizione diversa
+                const fullBodyAnim = (legsAction === knightAnimations.runLower) ? knightAnimations.run : knightAnimations.walk;
+                if (fullBodyAnim && fullBodyAnim.isRunning()) {
+                    // Copia il tempo attuale per mantenere la fase del passo
+                    legsAction.time = fullBodyAnim.time;
+                    // console.log(`[SYNC] Synced ${legsAction.getClip().name} to ${fullBodyAnim.getClip().name} (time: ${fullBodyAnim.time.toFixed(2)})`);
+                }
+            }
             legsAction.setEffectiveWeight(1.3);
             legsAction.fadeIn(fadeTime).play();
         }
         // Avvia upper attack
         const upper = knightAnimations.attackUpper;
         upper.reset();
-        upper.setEffectiveTimeScale(2.0); // stesso speed boost
+        upper.setEffectiveTimeScale(1.4); // SPEED FIX: 1.4x instead of 2.0x
         upper.setEffectiveWeight(2.2);
         upper.fadeIn(fadeTime).play();
         const naturalDuration = upper.getClip().duration;
-        const actualDuration = naturalDuration / 2.0;
+        const actualDuration = naturalDuration / 1.4;
         minAnimDuration = actualDuration;
+
+        // SYNC FIX: Calcola velocità spada per finire esattamente con l'animazione
+        // La spada fa un arco di PI (3.14) radianti
+        swordAnimationSpeed = Math.PI / actualDuration;
+
         animationStartTime = performance.now();
         currentKnightAnimName = 'attack_layered';
-        console.log(`  [Attack Layered] Upper+Legs (${legsAction === knightAnimations.runLower ? 'RUN' : 'WALK'}) Duration: ${actualDuration.toFixed(2)}s`);
+        console.log(`  [Attack Layered] Upper+Legs (${legsAction === knightAnimations.runLower ? 'RUN' : 'WALK'}) Duration: ${actualDuration.toFixed(2)}s, SwordSpeed: ${swordAnimationSpeed.toFixed(2)}`);
+
+        // CONFLICT FIX: Reset timer per garantire inizio pulito
+        attackTimer = 0;
         isAttacking = true;
         return;
     }
@@ -979,13 +1132,30 @@ function playKnightAnimation(animName, forceRestart = false) {
         // Animazione segue l'input del giocatore, non la stamina
         const isSprintingActive = isSprinting && moveForward;
         const legsAction = isSprintingActive && knightAnimations.runLower ? knightAnimations.runLower : knightAnimations.walkLower;
+
+        // CORRUPTION FIX: Ferma altri layer ma mantieni le gambe se servono
+        stopLayeredActions(legsAction ? [legsAction] : []);
+
         Object.entries(knightAnimations).forEach(([k, action]) => {
             if (action && action.isRunning() && action !== legsAction && action !== knightAnimations.idle && action !== knightAnimations.powerupUpper) {
-                action.fadeOut(fadeTime);
+                // ANTI-ACCUMULATION FIX: Se peso basso, STOP immediato
+                if (action.getEffectiveWeight() < 0.1) {
+                    action.stop();
+                    action.setEffectiveWeight(0);
+                } else {
+                    action.fadeOut(fadeTime);
+                }
             }
         });
         if (legsAction) {
-            if (!legsAction.isRunning()) legsAction.reset();
+            if (!legsAction.isRunning()) {
+                legsAction.reset();
+                // SYNC FIX: Sincronizzazione anche per powerup
+                const fullBodyAnim = (legsAction === knightAnimations.runLower) ? knightAnimations.run : knightAnimations.walk;
+                if (fullBodyAnim && fullBodyAnim.isRunning()) {
+                    legsAction.time = fullBodyAnim.time;
+                }
+            }
             legsAction.setEffectiveWeight(1.2);
             legsAction.fadeIn(fadeTime).play();
         }
@@ -1003,6 +1173,11 @@ function playKnightAnimation(animName, forceRestart = false) {
     }
 
     let targetAction = knightAnimations[animName];
+
+    // CORRUPTION FIX: Se avviamo un'animazione standard (non layered), 
+    // assicuriamoci che i layer precedenti siano completamente spenti
+    stopLayeredActions();
+
     // Jump sempre sul posto: nessuna sostituzione condizionale necessaria
     const fadeTime = 0.2; // 200ms di crossfade
 
@@ -1012,18 +1187,42 @@ function playKnightAnimation(animName, forceRestart = false) {
             knightAnimations.idle.reset();
             knightAnimations.idle.play();
         }
-        // Idle sempre a weight 1.0, le altre animazioni la sovrascriveranno
-        knightAnimations.idle.setEffectiveWeight(1.0);
+
+        // FIX: Se l'animazione target NON è idle, riduci il peso di idle a 0 per evitare blending
+        // Se è idle, mettila a 1.0 (o fade in)
+        if (animName !== 'idle') {
+            // T-POSE FIX: Keep idle alive at 1% weight as safety net
+            knightAnimations.idle.setEffectiveWeight(0.01);
+        } else {
+            knightAnimations.idle.setEffectiveWeight(1.0);
+        }
     }
 
     // Fade out delle altre animazioni (eccetto idle) e fade in della nuova
+    // Fade out delle altre animazioni (eccetto idle) e fade in della nuova
     Object.values(knightAnimations).forEach(action => {
         if (action && action !== targetAction && action !== knightAnimations.idle && action.isRunning()) {
-            action.fadeOut(fadeTime);
+            // ANTI-ACCUMULATION FIX: Se peso basso, STOP immediato
+            if (action.getEffectiveWeight() < 0.1) {
+                action.stop();
+                action.setEffectiveWeight(0);
+            } else {
+                action.fadeOut(fadeTime);
+            }
         }
     });
 
     targetAction.reset();
+
+    // SYNC FIX: Se stiamo tornando a Walk/Run da un Layered Attack, sincronizza il tempo
+    if (animName === 'run' || animName === 'walk') {
+        const layeredAnim = (animName === 'run') ? knightAnimations.runLower : knightAnimations.walkLower;
+        if (layeredAnim && layeredAnim.isRunning()) {
+            targetAction.time = layeredAnim.time;
+            // console.log(`[SYNC] Synced ${animName} to ${layeredAnim.getClip().name} (time: ${layeredAnim.time.toFixed(2)})`);
+        }
+    }
+
     targetAction.fadeIn(fadeTime);
 
     // Se non è idle, imposta weight maggiore dell'animazione target per sovrascrivere idle
@@ -1033,15 +1232,25 @@ function playKnightAnimation(animName, forceRestart = false) {
 
     // Imposta timeScale appropriato
     if (animName === 'attack') {
-        // Velocizza del doppio (2x speed)
-        targetAction.setEffectiveTimeScale(2.0);
+        // SPEED FIX: 1.4x instead of 2.0x
+        targetAction.setEffectiveTimeScale(1.4);
         const naturalDuration = targetAction.getClip().duration;
-        const actualDuration = naturalDuration / 2.0;
+        const actualDuration = naturalDuration / 1.4;
         minAnimDuration = actualDuration;
-        console.log(`  [Attack] Speed: 2x, Duration: ${actualDuration.toFixed(2)}s`);
+
+        // SYNC FIX: Calcola velocità spada per finire esattamente con l'animazione
+        swordAnimationSpeed = Math.PI / actualDuration;
+
+        // CONFLICT FIX: Reset timer per garantire inizio pulito
+        attackTimer = 0;
+
+        console.log(`  [Attack] Speed: 1.4x, Duration: ${actualDuration.toFixed(2)}s, SwordSpeed: ${swordAnimationSpeed.toFixed(2)}`);
     } else if (animName === 'whirlwind') {
         // Whirlwind a velocità naturale per massima fluidità
         targetAction.setEffectiveTimeScale(1.0);
+        // FIX: Rimuovi peso idle per evitare conflitti sulla rotazione hips (taglio al centro)
+        if (knightAnimations.idle) knightAnimations.idle.setEffectiveWeight(0);
+
         const naturalDuration = targetAction.getClip().duration;
         minAnimDuration = naturalDuration;
         console.log(`  [Whirlwind] Natural speed, Duration: ${naturalDuration.toFixed(2)}s`);
@@ -1130,6 +1339,10 @@ function updateKnightAnimation() {
                 knightAnimations.strafeLower.stop();
             }
 
+            // CORRUPTION FIX: Ferma layer conflittuali
+            if (knightAnimations.attackUpper && knightAnimations.attackUpper.isRunning()) knightAnimations.attackUpper.stop();
+            if (knightAnimations.powerupUpper && knightAnimations.powerupUpper.isRunning()) knightAnimations.powerupUpper.stop();
+
             // Attiva i layer separati
             if (!knightAnimations.blockIdleUpper.isRunning()) {
                 knightAnimations.blockIdleUpper.reset();
@@ -1157,34 +1370,46 @@ function updateKnightAnimation() {
             console.log('[KNIGHT] Blocking interrupted Powerup Upper');
         }
 
-        // LAYERING: se blocchi E ti muovi, upper body = blockIdle, lower body = strafe
-        if (isMoving && knightAnimations.blockIdleUpper && knightAnimations.strafeLower) {
-            // Stoppa altre animazioni che potrebbero causare conflitti
-            if (knightAnimations.blockIdle && knightAnimations.blockIdle.isRunning()) {
-                knightAnimations.blockIdle.stop();
-            }
-            if (knightAnimations.strafe && knightAnimations.strafe.isRunning()) {
-                knightAnimations.strafe.stop();
-            }
-            if (knightAnimations.walk && knightAnimations.walk.isRunning()) {
-                knightAnimations.walk.stop();
+        // LAYERING: se blocchi E ti muovi, upper body = blockIdle, lower body = walk/run/strafe
+        if (isMoving && knightAnimations.blockIdleUpper) {
+            // Determine correct lower body animation
+            let lowerAction = null;
+            const isSprintingActive = isSprinting && moveForward && !sprintCooldown;
+
+            if (moveForward || moveBackward) {
+                lowerAction = isSprintingActive && knightAnimations.runLower ? knightAnimations.runLower : knightAnimations.walkLower;
+            } else if ((moveLeft || moveRight) && knightAnimations.strafeLower) {
+                lowerAction = knightAnimations.strafeLower;
             }
 
-            // Attiva i layer separati
-            if (!knightAnimations.blockIdleUpper.isRunning()) {
-                knightAnimations.blockIdleUpper.reset();
-                knightAnimations.blockIdleUpper.play();
-            }
-            knightAnimations.blockIdleUpper.setEffectiveWeight(2.0); // Peso alto per upper body
+            if (lowerAction) {
+                // Stoppa altre animazioni che potrebbero causare conflitti
+                if (knightAnimations.blockIdle && knightAnimations.blockIdle.isRunning()) knightAnimations.blockIdle.stop();
+                if (knightAnimations.strafe && knightAnimations.strafe.isRunning()) knightAnimations.strafe.stop();
+                if (knightAnimations.walk && knightAnimations.walk.isRunning()) knightAnimations.walk.stop();
+                if (knightAnimations.run && knightAnimations.run.isRunning()) knightAnimations.run.stop();
 
-            if (!knightAnimations.strafeLower.isRunning()) {
-                knightAnimations.strafeLower.reset();
-                knightAnimations.strafeLower.play();
-            }
-            knightAnimations.strafeLower.setEffectiveWeight(1.5); // Peso moderato per lower body
+                // CORRUPTION FIX: Ferma layer conflittuali
+                if (knightAnimations.attackUpper && knightAnimations.attackUpper.isRunning()) knightAnimations.attackUpper.stop();
+                if (knightAnimations.powerupUpper && knightAnimations.powerupUpper.isRunning()) knightAnimations.powerupUpper.stop();
 
-            currentKnightAnimName = 'blockIdle+strafe_layered';
-            return;
+                // Attiva i layer separati
+                if (!knightAnimations.blockIdleUpper.isRunning()) {
+                    knightAnimations.blockIdleUpper.reset();
+                    knightAnimations.blockIdleUpper.play();
+                }
+                knightAnimations.blockIdleUpper.setEffectiveWeight(2.0); // Peso alto per upper body
+
+                if (!lowerAction.isRunning()) {
+                    lowerAction.reset();
+                    // SYNC: Sync with full body if it was running? (Optional, but good for smoothness)
+                    lowerAction.play();
+                }
+                lowerAction.setEffectiveWeight(1.5); // Peso moderato per lower body
+
+                currentKnightAnimName = 'blockIdle+move_layered';
+                return;
+            }
         }
         // Se stavi facendo blockIdle+strafe ma hai smesso di muoverti, passa a blockIdle normale
         else if (!isMoving && currentKnightAnimName === 'blockIdle+strafe_layered') {
@@ -1317,8 +1542,8 @@ function updateKnightAnimation() {
         if (isStrafing && knightAnimations.strafe) {
             // A, S o D: usa strafe
             targetAnim = 'strafe';
-        } else if (moveForward && isSprinting && knightAnimations.run) {
-            // W + Shift: usa run (animazione sempre mostrata se Shift premuto)
+        } else if (moveForward && isSprinting && !sprintCooldown && knightAnimations.run) {
+            // W + Shift + Stamina OK: usa run
             targetAnim = 'run';
         } else if (moveForward && knightAnimations.walk) {
             // W senza sprint: usa walk
@@ -1330,6 +1555,17 @@ function updateKnightAnimation() {
     }
     else if (knightAnimations.idle) {
         targetAnim = 'idle';
+
+        // SMART RUNTIME CLEANUP: If we are consistently in IDLE, ensure nothing else is stealing resources
+        if (currentKnightAnimName === 'idle') {
+            Object.values(knightAnimations).forEach(action => {
+                if (action && action !== knightAnimations.idle && action.isRunning()) {
+                    // Force stop anything that isn't idle
+                    action.stop();
+                    action.setEffectiveWeight(0);
+                }
+            });
+        }
     }
 
     if (targetAnim && currentKnightAnimName !== targetAnim) {
@@ -1350,8 +1586,8 @@ function updateKnightAnimation() {
     normalizeScale(knightAnimations.walkLower, 1.0);
     normalizeScale(knightAnimations.runLower, 1.0);
     normalizeScale(knightAnimations.strafeLower, 1.0);
-    normalizeScale(knightAnimations.attack, 2.0);
-    normalizeScale(knightAnimations.attackUpper, 2.0);
+    normalizeScale(knightAnimations.attack, 1.4); // SPEED FIX: 1.4x
+    normalizeScale(knightAnimations.attackUpper, 1.4); // SPEED FIX: 1.4x
     normalizeScale(knightAnimations.whirlwind, 1.0);
     normalizeScale(knightAnimations.powerup, 1.0);
     normalizeScale(knightAnimations.powerupUpper, 1.0);
@@ -1525,8 +1761,17 @@ function createShield() {
     playerLimbs.armL.add(shieldMesh);
 }
 
+// FIX: Material Cache to prevent memory leaks (reusing materials for same colors)
+const particleMaterials = {};
+
 function spawnParticles(pos, color, count, speedBase, size, isGibs) {
-    const mat = new THREE.MeshBasicMaterial({ color: color });
+    // FIX: Use cached material or create new one if needed
+    let mat = particleMaterials[color];
+    if (!mat) {
+        mat = new THREE.MeshBasicMaterial({ color: color });
+        particleMaterials[color] = mat;
+    }
+
     for (let i = 0; i < count; i++) {
         const particleSize = isGibs ? (size * (0.5 + random() * 0.5)) : size;
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(particleSize, particleSize, particleSize), mat);
@@ -1557,7 +1802,12 @@ function updateParticles(delta) {
                 p.velocity.set(0, 0, 0);
             }
         }
-        if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+        if (p.life <= 0) {
+            // FIX: Dispose geometry to free GPU memory
+            if (p.mesh.geometry) p.mesh.geometry.dispose();
+            scene.remove(p.mesh);
+            particles.splice(i, 1);
+        }
     }
 }
 
@@ -1616,9 +1866,34 @@ function updateAnimations(delta) {
     if (playerStats.isDead) { playerMesh.position.y = 6; return; }
 
     // AGGIORNAMENTO ANIMAZIONI KNIGHT
+    // AGGIORNAMENTO ANIMAZIONI KNIGHT
     if (knightModel && knightModel.visible) {
-        if (knightMixer) knightMixer.update(delta);
+        // FIX: Logic FIRST, then Update Mixer. Prevents 1-frame lag/glitches.
         updateKnightAnimation();
+
+        // DYNAMIC IDLE WEIGHT (Anti-T-Pose Core)
+        // Calculate total weight of all other animations to fill gaps with idle
+        if (knightAnimations.idle) {
+            let totalWeight = 0;
+            Object.values(knightAnimations).forEach(action => {
+                if (action !== knightAnimations.idle && action.isRunning()) {
+                    totalWeight += action.getEffectiveWeight();
+                }
+            });
+
+            // Idle fills the void. If totalWeight > 1, idle becomes 0.
+            // If totalWeight is 0.5 (blending), idle becomes 0.5.
+            // If totalWeight is 0 (nothing running), idle becomes 1.0.
+            const targetIdleWeight = Math.max(0, 1.0 - totalWeight);
+            knightAnimations.idle.setEffectiveWeight(targetIdleWeight);
+
+            // Ensure idle is playing if it has weight
+            if (targetIdleWeight > 0.001 && !knightAnimations.idle.isRunning()) {
+                knightAnimations.idle.play();
+            }
+        }
+
+        if (knightMixer) knightMixer.update(delta);
     }
 
     // AGGIORNAMENTO ANIMAZIONI ARCHER FPS
@@ -1909,7 +2184,17 @@ function updateSwordAnimation(delta) {
         const speed = 20; swordContainer.rotation.z = -Math.PI / 2; swordContainer.rotation.y += delta * speed; swordContainer.rotation.x = Math.PI / 2;
         playerLimbs.armR.rotation.x = -Math.PI / 2; playerLimbs.armL.rotation.x = -Math.PI / 2; return;
     }
-    if (isAttacking && weaponMode !== 'bow') { attackTimer += delta * 15; if (attackTimer > Math.PI) isAttacking = false; }
+    if (isAttacking && weaponMode !== 'bow') {
+        attackTimer += delta * swordAnimationSpeed; // SYNC FIX: Usa velocità calcolata
+        if (attackTimer > Math.PI) {
+            isAttacking = false;
+            // CORRUPTION FIX: Ferma forzatamente il layer upper quando l'attacco finisce
+            if (knightAnimations.attackUpper && knightAnimations.attackUpper.isRunning()) {
+                knightAnimations.attackUpper.stop();
+                knightAnimations.attackUpper.setEffectiveWeight(0);
+            }
+        }
+    }
     if (weaponMode === 'melee') {
         let targetRotZ = 0;
         let targetRotY = 0;
@@ -2055,7 +2340,8 @@ function updatePhysics(delta) {
         }
     });
     if (socket && myId) {
-        const animState = !canJump ? 'jump' : (isSprinting ? 'run' : (moving) ? 'walk' : 'idle');
+        // FIX: Anim state should reflect actual speed (walk if cooldown)
+        const animState = !canJump ? 'jump' : ((isSprinting && !sprintCooldown) ? 'run' : (moving) ? 'walk' : 'idle');
         socket.emit('playerMovement', { position: playerMesh.position, rotation: { x: playerMesh.rotation.x, y: playerMesh.rotation.y, z: playerMesh.rotation.z }, animState: animState, weaponMode: weaponMode });
     }
 }
@@ -2083,7 +2369,28 @@ function loadEnemyKnightModel(playerObj) {
     if (playerObj.knightModel) return; // Già caricato
 
     const loader = new THREE.GLTFLoader();
-    loader.load('./models/Knight Met.glb', (gltf) => {
+    const cacheBuster = Date.now();
+    loader.load(`./models/Knight_Met_2.glb?v=${cacheBuster}`, (gltf) => {
+        // DEFENSIVE LOADING: Cleanup existing model if present
+        if (playerObj.knightModel) {
+            console.warn('[ENEMY] Existing model detected for', playerObj.username, '! Cleaning up...');
+            if (playerObj.knightMixer) {
+                playerObj.knightMixer.stopAllAction();
+                playerObj.knightMixer.uncacheRoot(playerObj.knightModel);
+            }
+            if (playerObj.mesh) playerObj.mesh.remove(playerObj.knightModel);
+            playerObj.knightModel.traverse((child) => {
+                if (child.isMesh) {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                        else child.material.dispose();
+                    }
+                }
+            });
+            playerObj.knightModel = null;
+        }
+
         const model = gltf.scene;
 
         model.scale.set(10, 10, 10);
@@ -2137,6 +2444,7 @@ function loadEnemyKnightModel(playerObj) {
             console.log(`[ENEMY-LOAD] Animations found for ${playerObj.username}:`, gltf.animations.map(c => c.name));
             gltf.animations.forEach((clip) => {
                 const name = clip.name.toLowerCase();
+                if (name.includes('.001') || name.includes('mixamo.com')) return; // SKIP DUPLICATES & JUNK
                 let action = null;
 
                 if (name.includes('walk') && !name.includes('block') || name.includes('wal')) {
@@ -2164,12 +2472,19 @@ function loadEnemyKnightModel(playerObj) {
                     action.setLoop(THREE.LoopOnce);
                     action.clampWhenFinished = true;
                     playerObj.knightAnimations.jump = action;
+                } else if ((name.includes('cast') && name.includes('1')) || name === 'cast 1' || name === 'cast1') {
+                    action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopOnce);
+                    action.clampWhenFinished = true; // FIX T-POSE: Hold final pose until transition
+                    action.repetitions = 1;
+                    playerObj.knightAnimations.cast = action;
+                    console.log(`[ENEMY-LOAD] Mapped cast animation for ${playerObj.username}`);
                 } else if (name.includes('attack') || name.includes('slash')) {
                     // Use the first attack found or specific one if needed
                     if (!playerObj.knightAnimations.attack) {
                         action = mixer.clipAction(clip);
                         action.setLoop(THREE.LoopOnce);
-                        action.clampWhenFinished = true;
+                        action.clampWhenFinished = true; // FIX T-POSE
                         action.timeScale = 1.5; // Match local player speed
                         playerObj.knightAnimations.attack = action;
                     }
@@ -2179,7 +2494,7 @@ function loadEnemyKnightModel(playerObj) {
                     const newClip = new THREE.AnimationClip(clip.name, clip.duration, tracks);
                     action = mixer.clipAction(newClip);
                     action.setLoop(THREE.LoopOnce);
-                    action.clampWhenFinished = true;
+                    action.clampWhenFinished = true; // FIX T-POSE
                     action.timeScale = 1.5;
                     playerObj.knightAnimations.whirlwind = action;
                 } else if (name.includes('powerup') || name.includes('roar') || name.includes('buff') || name.includes('shout')) {
@@ -2283,12 +2598,33 @@ function loadEnemyKnightModel(playerObj) {
                 const upperClip = createLayeredClip(originalClip, upperBodyBones, 'powerup_upperBody');
                 playerObj.knightAnimations.powerupUpper = mixer.clipAction(upperClip);
                 playerObj.knightAnimations.powerupUpper.setLoop(THREE.LoopOnce);
-                playerObj.knightAnimations.powerupUpper.clampWhenFinished = true;
+                playerObj.knightAnimations.powerupUpper.clampWhenFinished = true; // FIX T-POSE
                 console.log(`[ENEMY-LOAD] Created powerupUpper for ${playerObj.username}`);
             }
 
 
         }
+
+        // Evento quando finisce un'animazione one-shot (FIX T-POSE)
+        mixer.addEventListener('finished', (e) => {
+            // Se finisce un'animazione che non è loop, torna a idle/run
+            if (e.action === playerObj.knightAnimations.cast ||
+                e.action === playerObj.knightAnimations.attack ||
+                e.action === playerObj.knightAnimations.powerup ||
+                e.action === playerObj.knightAnimations.whirlwind) {
+
+                console.log(`[ENEMY-ANIM] Finished ${e.action.getClip().name}, returning to state...`);
+
+                // Se il player sta ancora facendo qualcosa (es. hold), non interrompere
+                if (playerObj.mesh.userData.isHoldingSpell) return;
+
+                // Altrimenti torna all'animazione di base (idle o run)
+                const baseAnim = (playerObj.mesh.userData.animState === 'run') ? 'run' :
+                    (playerObj.mesh.userData.animState === 'walk') ? 'walk' : 'idle';
+
+                playEnemyKnightAnimation(playerObj, baseAnim, false);
+            }
+        });
 
         // Start Idle
         if (playerObj.knightAnimations.idle) {
@@ -2301,6 +2637,39 @@ function loadEnemyKnightModel(playerObj) {
 }
 
 function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceRestart = false) {
+    // SPECIAL HANDLING: CAST HOLD (Pause cast animation in middle)
+    // Must be before check for knightAnimations[name] because castHold is not in the list
+    if (name === 'castHold') {
+        let action = playerObj.knightAnimations ? playerObj.knightAnimations.cast : null;
+
+        // Fallback to attack if cast is missing (Safety net)
+        if (!action && playerObj.knightAnimations && playerObj.knightAnimations.attack) {
+            console.warn(`[ANIM-DEBUG] castHold: 'cast' missing for ${playerObj.username}, using 'attack' fallback.`);
+            action = playerObj.knightAnimations.attack;
+        }
+
+        if (action) {
+            // Se stiamo già facendo cast/attack, non resettare, ma congela
+            if (playerObj.currentKnightAction !== action) {
+                console.log(`[ANIM-DEBUG] Starting castHold for ${playerObj.username} (Action: ${action.getClip().name})`);
+                if (playerObj.currentKnightAction) playerObj.currentKnightAction.fadeOut(0.2);
+                action.reset();
+                action.fadeIn(0.2);
+                action.play();
+                playerObj.currentKnightAction = action;
+            }
+
+            // Congela a metà (FORCE EVERY FRAME)
+            // Fix: Ensure we are not at 0 time if we just reset
+            if (action.time === 0) action.time = action.getClip().duration * 0.5;
+
+            action.timeScale = 0;
+            return true;
+        }
+        console.error(`[ANIM-DEBUG] castHold failed: No suitable animation found for ${playerObj.username}`);
+        return false;
+    }
+
     if (!playerObj.knightAnimations) {
         // console.warn(`[ANIM-DEBUG] No knightAnimations for ${playerObj.username}`);
         return false;
@@ -2312,6 +2681,7 @@ function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceResta
         let fallbackName = 'idle';
         if (name === 'powerup') fallbackName = 'attack'; // If powerup missing, try attack
         else if (name === 'whirlwind') fallbackName = 'attack'; // If whirlwind missing, try attack
+        else if (name === 'cast') fallbackName = 'attack'; // If cast missing, try attack
         else if (name === 'jump') fallbackName = 'idle'; // If jump missing, use idle
 
         // Try fallback
@@ -2337,20 +2707,37 @@ function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceResta
         return false;
     }
 
-    // console.log(`[ANIM-DEBUG] Playing '${name}' for ${playerObj.username} (OneShot: ${isOneShot})`);
+    console.log(`[ANIM-DEBUG] Playing '${name}' for ${playerObj.username} (OneShot: ${isOneShot})`);
+
+    // DUPLICATE REMOVED
 
     const newAction = playerObj.knightAnimations[name];
 
     // Prevent restarting if already playing (unless forced)
     // This fixes the T-pose/glitch when 'jump' state is sent continuously
-    if (playerObj.currentKnightAction === newAction && newAction.isRunning() && !forceRestart) return true;
+    if (playerObj.currentKnightAction === newAction && newAction.isRunning() && !forceRestart) {
+        // Se è cast ed era congelato (hold), scongelalo!
+        if (name === 'cast' && newAction.timeScale === 0) {
+            newAction.timeScale = 1;
+        }
+        return true;
+    }
 
     if (playerObj.currentKnightAction && playerObj.currentKnightAction !== newAction) {
         playerObj.currentKnightAction.fadeOut(0.2);
     }
 
     newAction.reset();
-    newAction.fadeIn(0.2);
+    newAction.timeScale = 1; // Ensure normal speed (fix for castHold unfreeze)
+    newAction.setEffectiveTimeScale(1);
+    newAction.setEffectiveWeight(1);
+
+    // FIX T-POSE: Don't fade in combat animations, snap to them for responsiveness and to avoid low-weight gaps
+    const isCombatAnim = (name === 'attack' || name === 'cast' || name === 'whirlwind' || name === 'powerup');
+    if (!isCombatAnim) {
+        newAction.fadeIn(0.2);
+    }
+
     newAction.play();
     playerObj.currentKnightAction = newAction;
 
@@ -2373,6 +2760,17 @@ function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceResta
 function updateOtherPlayersAnimations(delta) {
     Object.values(otherPlayers).forEach(p => {
         if (p.knightMixer && p.knightModel && p.knightModel.visible) {
+            // FIX: Se il player sta caricando una magia (Hold), non aggiornare animazioni di movimento
+            if (p.mesh.userData.isHoldingSpell) {
+                // Assicurati che l'animazione corrente sia castHold (o cast in pausa)
+                // Se per qualche motivo non lo è, forzala
+                if (p.currentKnightAction !== p.knightAnimations.cast) {
+                    playEnemyKnightAnimation(p, 'castHold');
+                }
+                // Skip movement animation update
+                p.knightMixer.update(delta);
+                return;
+            }
             p.knightMixer.update(delta);
 
             // Logic to update state based on p.mesh.userData
@@ -2402,9 +2800,10 @@ function updateOtherPlayersAnimations(delta) {
             // 2. Blocking (High Priority - Interrupts Powerup/Attack)
             if (isBlocking) {
                 // Stop conflicting one-shot animations (Powerup, Attack)
-                if (p.knightAnimations.powerup && p.knightAnimations.powerup.isRunning()) p.knightAnimations.powerup.stop();
-                if (p.knightAnimations.powerupUpper && p.knightAnimations.powerupUpper.isRunning()) p.knightAnimations.powerupUpper.stop();
-                if (p.knightAnimations.attack && p.knightAnimations.attack.isRunning()) p.knightAnimations.attack.stop();
+                // FIX T-POSE: Use fadeOut instead of stop to avoid frame with no animation
+                if (p.knightAnimations.powerup && p.knightAnimations.powerup.isRunning()) p.knightAnimations.powerup.fadeOut(0.2);
+                if (p.knightAnimations.powerupUpper && p.knightAnimations.powerupUpper.isRunning()) p.knightAnimations.powerupUpper.fadeOut(0.2);
+                if (p.knightAnimations.attack && p.knightAnimations.attack.isRunning()) p.knightAnimations.attack.fadeOut(0.2);
 
                 // Force exit one-shot mode
                 p.isPerformingOneShot = false;
@@ -2575,6 +2974,33 @@ window.switchArcherAnimation = switchArcherAnimation;
 // Helper to switch Archer FPS animations
 function switchArcherAnimation(name) {
     if (!fpsArcherAnimations || !fpsArcherAnimations[name]) return;
+
+    // --- HARD RESET FUNCTION FOR RESPAWN ---
+    function resetKnightAnimations() {
+        console.log('[KNIGHT] Executing Hard Animation Reset...');
+        if (knightMixer) {
+            knightMixer.stopAllAction();
+            // Uncache root to be safe
+            const root = knightMixer.getRoot();
+            knightMixer.uncacheRoot(root);
+        }
+
+        currentKnightAnimName = '';
+        currentKnightAction = null;
+        isAttacking = false;
+        isWhirlwinding = false;
+        attackTimer = 0;
+
+        // Restart Idle immediately
+        if (knightAnimations.idle) {
+            knightAnimations.idle.reset();
+            knightAnimations.idle.play();
+            knightAnimations.idle.setEffectiveWeight(1.0);
+            currentKnightAnimName = 'idle';
+            currentKnightAction = knightAnimations.idle;
+        }
+    }
+    window.resetKnightAnimations = resetKnightAnimations;
 
     const newAction = fpsArcherAnimations[name];
     if (fpsArcherCurrentAction === newAction) return; // Already playing

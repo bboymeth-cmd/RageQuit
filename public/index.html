@@ -1,19 +1,25 @@
 <!DOCTYPE html>
 <html lang="it">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RageQuit: Arena Modulare</title>
-        <link rel="stylesheet" href="./css/styles.css">
+    <link rel="stylesheet" href="./css/styles.css">
 
 </head>
+
 <body>
     <div id="screen-flash"></div>
     <div id="floating-text-container"></div>
     <div id="connection-status">DISCONNESSO</div>
-    <div id="fps-counter" style="position:fixed;top:50px;right:10px;color:#00ff00;font-size:14px;font-family:monospace;z-index:1000;text-align:right;">FPS: 0</div>
-    <div id="ping-counter" style="position:fixed;top:70px;right:10px;color:#ffff00;font-size:14px;font-family:monospace;z-index:1000;text-align:right;">PING: 0ms</div>
-    
+    <div id="fps-counter"
+        style="position:fixed;top:50px;right:10px;color:#00ff00;font-size:14px;font-family:monospace;z-index:1000;text-align:right;">
+        FPS: 0</div>
+    <div id="ping-counter"
+        style="position:fixed;top:70px;right:10px;color:#ffff00;font-size:14px;font-family:monospace;z-index:1000;text-align:right;">
+        PING: 0ms</div>
+
     <!-- Kill Counter -->
     <div id="kill-counter-container">
         <div id="kill-counter-team" style="display:flex;flex-wrap:wrap;gap:10px"></div>
@@ -27,35 +33,92 @@
     </div>
 
     <div id="crosshair"></div>
-    <div id="cast-bar-container"><div id="cast-text">CARICAMENTO...</div><div id="cast-bar-fill"></div></div>
-    
+    <div id="cast-bar-container">
+        <div id="cast-text">CARICAMENTO...</div>
+        <div id="cast-bar-fill"></div>
+    </div>
+
     <div id="action-bar">
-        <div id="slot-q" class="action-slot slot-q"><div class="key-label" id="lbl-switch">Q</div><div class="spell-icon">⚔️</div><div class="cooldown-overlay" id="whirlwind-cd"></div></div>
-        <div id="slot-e" class="action-slot slot-e"><div class="key-label" id="lbl-bow">E</div><div class="spell-icon">🏹</div><div class="cooldown-overlay"></div></div>
-        <div id="slot-1" class="action-slot slot-1 active"><div class="key-label" id="lbl-spell1">1</div><div class="spell-icon">🔹</div><div class="cooldown-overlay"></div></div>
-        <div id="slot-2" class="action-slot slot-2"><div class="key-label" id="lbl-spell2">2</div><div class="spell-icon">💨</div><div class="cooldown-overlay"></div></div>
-        <div id="slot-3" class="action-slot slot-3"><div class="key-label" id="lbl-spell3">3</div><div class="spell-icon">🔥</div><div class="cooldown-overlay"></div></div>
-        <div id="slot-4" class="action-slot slot-4"><div class="key-label" id="lbl-spell4">4</div><div class="spell-icon">⛰️</div><div class="cooldown-overlay" id="spikes-cd"></div></div>
-        <div id="slot-r" class="action-slot slot-r"><div class="key-label" id="lbl-heal">R</div><div class="spell-icon">💚</div><div class="cooldown-overlay" id="heal-cd"></div></div>
+        <div id="slot-q" class="action-slot slot-q">
+            <div class="key-label" id="lbl-switch">Q</div>
+            <div class="spell-icon">⚔️</div>
+            <div class="cooldown-overlay" id="whirlwind-cd"></div>
+        </div>
+        <div id="slot-e" class="action-slot slot-e">
+            <div class="key-label" id="lbl-bow">E</div>
+            <div class="spell-icon">🏹</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-1" class="action-slot slot-1 active">
+            <div class="key-label" id="lbl-spell1">1</div>
+            <div class="spell-icon">🔹</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-2" class="action-slot slot-2">
+            <div class="key-label" id="lbl-spell2">2</div>
+            <div class="spell-icon">💨</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-3" class="action-slot slot-3">
+            <div class="key-label" id="lbl-spell3">3</div>
+            <div class="spell-icon">🔥</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-4" class="action-slot slot-4">
+            <div class="key-label" id="lbl-spell4">4</div>
+            <div class="spell-icon">⛰️</div>
+            <div class="cooldown-overlay" id="spikes-cd"></div>
+        </div>
+        <div id="slot-r" class="action-slot slot-r">
+            <div class="key-label" id="lbl-heal">R</div>
+            <div class="spell-icon">💚</div>
+            <div class="cooldown-overlay" id="heal-cd"></div>
+        </div>
         <div class="separator"></div>
-        <div id="slot-5" class="action-slot" onclick="window.performConversion(1)"><div class="key-label" id="lbl-conv1">5</div><div class="spell-icon"><span class="conv-icon plus-red">+♥</span><span class="conv-icon minus-yellow">-⚡</span></div><div class="cooldown-overlay" id="conv1-cd"></div></div>
-        <div id="slot-6" class="action-slot" onclick="window.performConversion(2)"><div class="key-label" id="lbl-conv2">6</div><div class="spell-icon"><span class="conv-icon plus-blue">+💧</span><span class="conv-icon minus-red">-♥</span></div><div class="cooldown-overlay" id="conv2-cd"></div></div>
-        <div id="slot-7" class="action-slot" onclick="window.performConversion(3)"><div class="key-label" id="lbl-conv3">7</div><div class="spell-icon"><span class="conv-icon plus-yellow">+⚡</span><span class="conv-icon minus-blue">-💧</span></div><div class="cooldown-overlay" id="conv3-cd"></div></div>
+        <div id="slot-5" class="action-slot" onclick="window.performConversion(1)">
+            <div class="key-label" id="lbl-conv1">5</div>
+            <div class="spell-icon"><span class="conv-icon plus-red">+♥</span><span
+                    class="conv-icon minus-yellow">-⚡</span></div>
+            <div class="cooldown-overlay" id="conv1-cd"></div>
+        </div>
+        <div id="slot-6" class="action-slot" onclick="window.performConversion(2)">
+            <div class="key-label" id="lbl-conv2">6</div>
+            <div class="spell-icon"><span class="conv-icon plus-blue">+💧</span><span
+                    class="conv-icon minus-red">-♥</span></div>
+            <div class="cooldown-overlay" id="conv2-cd"></div>
+        </div>
+        <div id="slot-7" class="action-slot" onclick="window.performConversion(3)">
+            <div class="key-label" id="lbl-conv3">7</div>
+            <div class="spell-icon"><span class="conv-icon plus-yellow">+⚡</span><span
+                    class="conv-icon minus-blue">-💧</span></div>
+            <div class="cooldown-overlay" id="conv3-cd"></div>
+        </div>
     </div>
 
     <div id="ui-container">
-        <div class="bar-container"><div id="hp-bar" class="bar"></div><span class="label">SALUTE</span><span class="stat-value" id="hp-value">100/100</span></div>
-        <div class="bar-container"><div id="mana-bar" class="bar"></div><span class="label">MANA</span><span class="stat-value" id="mana-value">100/100</span></div>
-        <div class="bar-container"><div id="stamina-bar" class="bar"></div><span class="label" style="color:#ffffaa">STAMINA</span><span class="stat-value" id="stamina-value">100/100</span></div>
+        <div class="bar-container">
+            <div id="hp-bar" class="bar"></div><span class="label">SALUTE</span><span class="stat-value"
+                id="hp-value">100/100</span>
+        </div>
+        <div class="bar-container">
+            <div id="mana-bar" class="bar"></div><span class="label">MANA</span><span class="stat-value"
+                id="mana-value">100/100</span>
+        </div>
+        <div class="bar-container">
+            <div id="stamina-bar" class="bar"></div><span class="label" style="color:#ffffaa">STAMINA</span><span
+                class="stat-value" id="stamina-value">100/100</span>
+        </div>
         <div style="margin-top:5px; font-size:12px; color:#aaa; text-align:center;">
             <span id="weapon-mode-text" style="color:cyan">RANGED</span>
             <span id="block-text" style="color:#ffd700; display:none; margin-left:10px;">🛡️ PARATA</span>
         </div>
     </div>
-    
+
     <!-- CHAT MOVIBILE -->
     <div id="chat-container">
-        <div id="chat-header">💬 CHAT <button id="chat-close-btn" style="float:right;background:transparent;border:none;color:#ff0000;font-weight:900;cursor:pointer;font-size:16px;">×</button></div>
+        <div id="chat-header">💬 CHAT <button id="chat-close-btn"
+                style="float:right;background:transparent;border:none;color:#ff0000;font-weight:900;cursor:pointer;font-size:16px;">×</button>
+        </div>
         <div id="chat-messages"></div>
         <div id="chat-input-container">
             <input type="text" id="chat-input" placeholder="Premi INVIO per chattare..." maxlength="100">
@@ -69,7 +132,7 @@
     <div id="main-menu">
         <div class="menu-content">
             <img id="game-logo" src="./IMG/logo.png" alt="RageQuit" class="logo">
-            
+
             <div class="menu-buttons-container">
                 <div class="extra-btn-wrapper">
                     <img src="./IMG/tasto.png" alt="" class="btn-metal-bg">
@@ -88,7 +151,7 @@
                     <button id="menu-exit-btn" class="extra-btn">ESCI</button>
                 </div>
             </div>
-            
+
             <div class="username-input">
                 <img src="./IMG/osso.png" alt="" class="name-bone-bg">
                 <input type="text" id="username-input" placeholder="NOME GUERRIERO" maxlength="12">
@@ -133,15 +196,10 @@
     </div>
 
     <!-- Carica THREE.js e Socket.IO in modo sincrono -->
-    <script src="https://unpkg.com/three@0.170.0/build/three.min.js"></script>
+    <!-- Carica THREE.js r128 (Versione stabile richiesta) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        // Verifica caricamento THREE.js
-        if (typeof THREE === 'undefined') {
-            console.error('[THREE] r170 failed, loading r128 fallback');
-            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
-        } else {
-            console.log('[THREE] Version r' + THREE.REVISION + ' loaded successfully');
-        }
+        console.log('[THREE] Force loaded r128 as requested');
     </script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
@@ -157,4 +215,5 @@
     <script src="./js/game.js"></script>
 
 </body>
+
 </html>

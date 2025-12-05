@@ -40,11 +40,21 @@ function startCasting(spellId, type, key) {
     }
     castingState.active = true; castingState.timer = 0; castingState.maxTime = castTime; castingState.currentSpell = spellId; castingState.type = type; castingState.ready = false; castingState.keyHeld = key;
     document.getElementById('cast-bar-container').style.display = 'block'; document.getElementById('cast-text').innerText = "CARICAMENTO..."; document.getElementById('cast-bar-fill').className = '';
+
+    // NETWORK: Notify start casting (for hold animation)
+    if (socket && socket.connected && type === 'attack') {
+        socket.emit('playerStartCasting', { type: spellId });
+    }
 }
 
 function stopCasting(key) {
     if (!castingState.active) return;
     if (castingState.keyHeld === key) {
+        // NETWORK: Notify stop casting
+        if (socket && socket.connected && castingState.type === 'attack') {
+            socket.emit('playerStopCasting');
+        }
+
         if (castingState.ready) {
             if (castingState.type === 'attack') executeAttack(castingState.currentSpell);
             else if (castingState.type === 'conversion') executeConversion(castingState.currentSpell);

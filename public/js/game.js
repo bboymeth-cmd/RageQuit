@@ -92,7 +92,7 @@ const hitboxHelpers = [];
 const SETTINGS = {
     speed: 400.0,
     sprintMulti: 1.4,
-    sprintStaminaCostPerSec: 15.0,
+    sprintStaminaCostPerSec: 5.0,
 
     // JUMP SETTINGS
     jumpForce: 200.0,
@@ -151,6 +151,20 @@ const SETTINGS = {
     blockStaminaCost: 0.5,
     blockMitigation: 0.7
 };
+
+// --- BACKGROUND THROTTLING FIX ---
+// Use a Web Worker to drive network updates (unthrottled by browser)
+const updateWorker = new Worker('./js/worker-timer.js');
+updateWorker.onmessage = function (e) {
+    if (e.data === 'tick') {
+        // Force position update even if tab is backgrounded
+        if (typeof sendPositionUpdate === 'function') {
+            sendPositionUpdate();
+        }
+    }
+};
+updateWorker.postMessage('start');
+console.log('[WORKER] Network timer started');
 
 
 const loginModal = document.getElementById('login-modal');
@@ -787,6 +801,11 @@ function respawnPlayer() {
     attackTimer = 0;
     isBlocking = false;
 
+    // FIX: Hard Animation Reset on Respawn
+    if (typeof window.resetKnightAnimations === 'function') {
+        window.resetKnightAnimations();
+    }
+
     // Mostra il messaggio
     document.getElementById('message').style.display = 'none';
 
@@ -1185,7 +1204,11 @@ function updateUI() {
 }
 function animate() {
     requestAnimationFrame(animate);
-    const time = performance.now(); const delta = (time - prevTime) / 1000; prevTime = time;
+    const time = performance.now();
+    // FIX: Cap delta time to prevent physics/animation explosions on lag spikes
+    let delta = (time - prevTime) / 1000;
+    if (delta > 0.1) delta = 0.1; // Max 0.1s (10 FPS)
+    prevTime = time;
 
     // FPS Counter
     fpsFrames++;

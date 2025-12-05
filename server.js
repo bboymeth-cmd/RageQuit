@@ -32,15 +32,15 @@ function validateHit(shooterId, targetId, hitPosition) {
 
     // Verifica che il target sia abbastanza vicino alla posizione dell'hit
     const dist = distance3D(target.position, hitPosition);
-    
+
     // MIGLIORAMENTO: Distanza massima dinamica basata sul tipo di arma
     // Aumentata tolleranza per compensare lag e movimento veloce dei proiettili
     const maxHitDistance = 60; // Increased tolerance for fast projectiles + lag
-    
+
     // Validazione aggiuntiva: verifica che lo shooter non sia troppo lontano
     const shooterDist = distance3D(shooter.position, target.position);
     const maxShooterDistance = 500; // Range massimo delle armi
-    
+
     if (shooterDist > maxShooterDistance) {
         console.log(`[HIT VALIDATION] Shooter troppo lontano: ${shooterDist.toFixed(1)} > ${maxShooterDistance}`);
         return false;
@@ -206,7 +206,7 @@ io.on('connection', (socket) => {
             if (pushData.damage) {
                 // FIX: Assicura che il danno sia sempre positivo (non può guarire)
                 actualDamage = Math.max(0, Math.round(pushData.damage));
-                console.log(`[PUSH DAMAGE] Target: ${targetId.substring(0,8)}, Damage: ${actualDamage}, HP before: ${players[targetId].hp}`);
+                console.log(`[PUSH DAMAGE] Target: ${targetId.substring(0, 8)}, Damage: ${actualDamage}, HP before: ${players[targetId].hp}`);
                 players[targetId].hp -= actualDamage;
                 // Clamp HP a 0 per evitare valori negativi
                 players[targetId].hp = Math.max(0, players[targetId].hp);
@@ -232,10 +232,10 @@ io.on('connection', (socket) => {
 
             // Emit health update and damage effect to all players (DOPO playerDied se necessario)
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
-            
+
             // FIX: Invia playerHitResponse per feedback visivo completo (testo danno, flash, suono)
             if (actualDamage > 0) {
-                io.to(targetId).emit('playerHitResponse', { 
+                io.to(targetId).emit('playerHitResponse', {
                     damage: actualDamage,
                     isBlocking: players[targetId].isBlocking || false // Invia info se stava bloccando
                 });
@@ -249,7 +249,7 @@ io.on('connection', (socket) => {
 
         // DEBUG: Log ogni hit ricevuto con timestamp
         const timestamp = Date.now();
-        console.log(`[HIT RECEIVED] ${timestamp} - Attacker: ${socket.id.substring(0,8)}, Target: ${targetId?.substring(0,8)}, Damage: ${dmgData.damage}`);
+        console.log(`[HIT RECEIVED] ${timestamp} - Attacker: ${socket.id.substring(0, 8)}, Target: ${targetId?.substring(0, 8)}, Damage: ${dmgData.damage}`);
 
         // Verifica che il target esista e non sia già morto
         if (!players[targetId] || players[targetId].isDead || players[targetId].hp <= 0) {
@@ -270,18 +270,18 @@ io.on('connection', (socket) => {
             // FIX: SERVER CALCOLA IL DANNO - Non fidarsi del client!
             // Valida il tipo di danno e usa i valori server-side
             let actualDamage = dmgData.damage || 10; // Default fallback
-            
+
             // Clamp danno tra 1 e 100 per prevenire exploit
             actualDamage = Math.max(1, Math.min(100, actualDamage));
-            
+
             console.log(`[SERVER] HP PRIMA: ${players[targetId].hp}, Danno: ${actualDamage}`);
-            
+
             players[targetId].hp -= actualDamage;
 
             // Clamp HP a 0 per evitare valori negativi
             players[targetId].hp = Math.max(0, players[targetId].hp);
 
-            console.log(`[HIT VALIDATED] ${socket.id.substring(0,8)} -> ${targetId.substring(0,8)} | HP: ${players[targetId].hp + actualDamage} → ${players[targetId].hp} (dmg: ${actualDamage})`);
+            console.log(`[HIT VALIDATED] ${socket.id.substring(0, 8)} -> ${targetId.substring(0, 8)} | HP: ${players[targetId].hp + actualDamage} → ${players[targetId].hp} (dmg: ${actualDamage})`);
 
             // CRITICAL: Se il player muore, invia PRIMA playerDied POI updateHealth
             // Questo previene race conditions dove il client riceve HP update prima della morte
@@ -300,7 +300,7 @@ io.on('connection', (socket) => {
             io.emit('updateHealth', { id: targetId, hp: players[targetId].hp });
 
             // Send specific damage response to the target for local effects (like screen flash)
-            io.to(targetId).emit('playerHitResponse', { 
+            io.to(targetId).emit('playerHitResponse', {
                 damage: actualDamage,
                 isBlocking: players[targetId].isBlocking || false // Invia info se stava bloccando
             });
