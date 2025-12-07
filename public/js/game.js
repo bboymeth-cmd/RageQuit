@@ -275,10 +275,24 @@ function sendChatMessage(message) {
     }
 }
 
-function addChatMessage(username, text, isSystem = false) {
+function addChatMessage(username, text, isSystem = false, senderId = null) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'chat-message' + (isSystem ? ' system' : '');
-    msgDiv.innerHTML = `<span class="chat-username">${username}:</span><span class="chat-text">${text}</span>`;
+
+    let colorStyle = '';
+    if (!isSystem && senderId) {
+        let colorInt = 0xffffff;
+        if (senderId === myId) {
+            colorInt = myTeamColor;
+        } else if (otherPlayers[senderId]) {
+            colorInt = otherPlayers[senderId].teamColor || 0xffffff;
+        }
+        // Convert to hex string
+        const colorHex = '#' + colorInt.toString(16).padStart(6, '0');
+        colorStyle = `style="color: ${colorHex}; font-weight: bold; text-shadow: 1px 1px 0 #000;"`;
+    }
+
+    msgDiv.innerHTML = `<span class="chat-username" ${colorStyle}>${username}:</span><span class="chat-text">${text}</span>`;
     chatMessages.appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 

@@ -76,7 +76,7 @@ function initMultiplayer() {
         });
         socket.on('chatMessage', (data) => {
             if (typeof addChatMessage === 'function') {
-                addChatMessage(data.username, data.text, false);
+                addChatMessage(data.username, data.text, false, data.id);
             }
         });
         socket.on('teamCounts', (counts) => {
