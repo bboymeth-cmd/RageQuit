@@ -30,7 +30,7 @@
             <button id="reset-btn" class="btn" style="width: 100%;">RESPAWN</button>
             <button id="menu-btn" class="btn" style="border-bottom: 2px solid #e91e63; width: 100%;">MENU</button>
         </div>
-        <button id="keybinds-btn" class="btn" style="height: fit-content;">COMANDI</button>
+        <button id="keybinds-btn" class="btn" style="height: fit-content;">KEY BINDINGS</button>
         <div
             style="display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 8px; border-bottom: 3px solid #44aaff; backdrop-filter: blur(10px); height: fit-content;">
             <div id="audio-btn" style="cursor: pointer; font-size: 16px; user-select: none; line-height: 1;">🔊</div>
@@ -104,7 +104,7 @@
 
     <div id="ui-container">
         <div class="bar-container">
-            <div id="hp-bar" class="bar"></div><span class="label">SALUTE</span><span class="stat-value"
+            <div id="hp-bar" class="bar"></div><span class="label">HP</span><span class="stat-value"
                 id="hp-value">100/100</span>
         </div>
         <div class="bar-container">
@@ -117,7 +117,7 @@
         </div>
         <div style="margin-top:5px; font-size:12px; color:#aaa; text-align:center;">
             <span id="weapon-mode-text" style="color:cyan">RANGED</span>
-            <span id="block-text" style="color:#ffd700; display:none; margin-left:10px;">🛡️ PARATA</span>
+            <span id="block-text" style="color:#ffd700; display:none; margin-left:10px;">🛡️ PARRY</span>
         </div>
     </div>
 
@@ -128,7 +128,7 @@
         </div>
         <div id="chat-messages"></div>
         <div id="chat-input-container">
-            <input type="text" id="chat-input" placeholder="Premi INVIO per chattare..." maxlength="100">
+            <input type="text" id="chat-input" placeholder="Press ENTER to chat..." maxlength="100">
         </div>
     </div>
 
@@ -143,11 +143,11 @@
             <div class="menu-buttons-container">
                 <div class="extra-btn-wrapper">
                     <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
-                    <button id="team-btn" class="extra-btn">GIOCA</button>
+                    <button id="team-btn" class="extra-btn">MULTIPLAYER</button>
                 </div>
                 <div class="extra-btn-wrapper">
                     <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
-                    <button id="menu-keybinds-btn" class="extra-btn">COMANDI</button>
+                    <button id="menu-keybinds-btn" class="extra-btn">KEY BINDINGS</button>
                 </div>
                 <div class="extra-btn-wrapper">
                     <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
@@ -155,13 +155,13 @@
                 </div>
                 <div class="extra-btn-wrapper">
                     <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
-                    <button id="menu-exit-btn" class="extra-btn">ESCI</button>
+                    <button id="menu-exit-btn" class="extra-btn">EXIT</button>
                 </div>
             </div>
 
             <div class="username-input">
                 <img src="./IMG/osso.webp" alt="" class="name-bone-bg">
-                <input type="text" id="username-input" placeholder="NOME GUERRIERO" maxlength="12">
+                <input type="text" id="username-input" placeholder="NAME" maxlength="12">
             </div>
         </div>
     </div>
@@ -171,35 +171,35 @@
         <div class="team-grid">
             <div class="team-option" data-team="red">
                 <div class="team-bg red-bg"></div>
-                <h2>ROSIKONI</h2>
+                <h2>BLOODMAW</h2>
                 <div class="team-icon">🔴</div>
-                <div class="team-player-count" id="team-count-red">0 giocatori</div>
+                <div class="team-player-count" id="team-count-red">0 players</div>
             </div>
             <div class="team-option" data-team="black">
                 <div class="team-bg black-bg"></div>
-                <h2>TRIMONI</h2>
+                <h2>FROSTBITE</h2>
                 <div class="team-icon">🔵</div>
-                <div class="team-player-count" id="team-count-black">0 giocatori</div>
+                <div class="team-player-count" id="team-count-black">0 players</div>
             </div>
             <div class="team-option" data-team="green">
                 <div class="team-bg green-bg"></div>
-                <h2>FATTONI</h2>
+                <h2>ROTWOOD</h2>
                 <div class="team-icon">🟢</div>
-                <div class="team-player-count" id="team-count-green">0 giocatori</div>
+                <div class="team-player-count" id="team-count-green">0 players</div>
             </div>
             <div class="team-option" data-team="purple">
                 <div class="team-bg purple-bg"></div>
-                <h2>INFAMI</h2>
+                <h2>VOIDSCAR</h2>
                 <div class="team-icon">🟣</div>
-                <div class="team-player-count" id="team-count-purple">0 giocatori</div>
+                <div class="team-player-count" id="team-count-purple">0 players</div>
             </div>
         </div>
     </div>
 
     <div id="keybinds-panel">
-        <h2>⌨️ CONFIGURAZIONE TASTI</h2>
+        <h2>⌨️ KEY BINDINGS</h2>
         <div id="keybinds-content"></div>
-        <button id="close-keybinds">CHIUDI</button>
+        <button id="close-keybinds">CLOSE</button>
     </div>
 
     <!-- Carica THREE.js e Socket.IO in modo sincrono -->

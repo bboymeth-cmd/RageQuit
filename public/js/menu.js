@@ -19,7 +19,7 @@ function initMenu() {
     const teamOptions = document.querySelectorAll('.team-option');
     const menuKeybindsBtn = document.getElementById('menu-keybinds-btn');
     const menuAudioBtn = document.getElementById('menu-audio-btn');
-    
+
     // Bottone Comandi nel menu - apre il pannello keybinds
     if (menuKeybindsBtn) {
         menuKeybindsBtn.addEventListener('click', () => {
@@ -33,7 +33,7 @@ function initMenu() {
             }
         });
     }
-    
+
     // Bottone Chiudi nel pannello keybinds
     const closeKeybindsBtn = document.getElementById('close-keybinds');
     if (closeKeybindsBtn) {
@@ -44,7 +44,7 @@ function initMenu() {
             }
         });
     }
-    
+
     // Bottone Audio nel menu
     if (menuAudioBtn) {
         menuAudioBtn.addEventListener('click', () => {
@@ -72,6 +72,7 @@ function initMenu() {
     // Click su SQUADRE -> Mostra selezione squadre
     teamBtn.addEventListener('click', () => {
         if (!playerUsername) {
+            alert('Please enter your name to start!'); // VALIDATION MESSAGE
             usernameInput.focus();
             usernameInput.style.borderColor = '#ff0000';
             usernameInput.style.boxShadow = '0 0 30px rgba(255,0,0,0.8)';
@@ -83,15 +84,15 @@ function initMenu() {
         }
 
         currentGameMode = 'team';
-        
+
         // Salva username
         window.myUsername = playerUsername;
         localStorage.setItem('ragequit_username', playerUsername);
-        
+
         // Nascondi menu principale e mostra selezione squadre
         mainMenu.style.display = 'none';
         teamSelectionScreen.style.display = 'flex';
-        
+
         // Richiedi conteggio squadre se socket disponibile
         if (typeof io !== 'undefined') {
             const tempSocket = io();
@@ -107,12 +108,12 @@ function initMenu() {
         option.addEventListener('click', () => {
             const team = option.dataset.team;
             selectedTeam = team;
-            
+
             // Imposta colore squadra
             window.myTeam = team;
             window.myTeamColor = TEAM_COLORS[team];
             console.log('[MENU] Team selected:', team, 'Color:', window.myTeamColor.toString(16));
-            
+
             // Nascondi selezione squadre e avvia gioco
             teamSelectionScreen.style.display = 'none';
             startGame('team');
@@ -122,10 +123,10 @@ function initMenu() {
 
 function startGame(mode) {
     console.log(`[MENU] Starting game - Mode: ${mode}, Team: ${selectedTeam || 'none'}`);
-    
+
     // Imposta variabili globali (solo team mode)
     window.myGameMode = 'team';
-    
+
     if (selectedTeam) {
         window.myTeamColor = TEAM_COLORS[selectedTeam];
         window.myTeam = selectedTeam;
@@ -159,7 +160,7 @@ function startGame(mode) {
             if (promise && typeof promise.catch === 'function') {
                 promise.catch(e => console.log('[MENU] Pointer lock non attivato:', e));
             }
-        } catch(e) {
+        } catch (e) {
             console.log('[MENU] Errore pointer lock:', e);
         }
     }, 100);
@@ -177,7 +178,7 @@ function updateTeamCounts(counts) {
         const countEl = document.getElementById(`team-count-${team}`);
         if (countEl) {
             const count = counts[team];
-            countEl.textContent = count === 1 ? '1 giocatore' : `${count} giocatori`;
+            countEl.textContent = count === 1 ? '1 player' : `${count} players`;
         }
     });
 }

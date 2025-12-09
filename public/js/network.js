@@ -547,14 +547,37 @@ function initMultiplayer() {
                 // Non rimuovere il giocatore - sarà rimostrato quando respawna
             }
 
-            // Incrementa kill counter per il killer
-            if (data.killerId && data.killerId === myId) {
-                const victimTeam = otherPlayers[data.id]?.team || null;
-                incrementKill(myId, myTeam);
-                addFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 12, 0)), '☠️ KILL!', 0xff0000, 1.5);
-            } else if (data.killerId && otherPlayers[data.killerId]) {
-                const killerTeam = otherPlayers[data.killerId].team || null;
-                incrementKill(data.killerId, killerTeam);
+            // Score Logic: Friendly Fire Check
+            if (data.killerId) {
+                const killerId = data.killerId;
+                const victimId = data.id;
+
+                // Determine teams
+                const killerTeam = (killerId === myId) ? myTeam : (otherPlayers[killerId]?.team || null);
+                const victimTeam = (victimId === myId) ? myTeam : (otherPlayers[victimId]?.team || null);
+
+                if (killerTeam && victimTeam) {
+                    if (killerTeam === victimTeam && killerId !== victimId) {
+                        // FRIENDLY FIRE: PENALTY (-1)
+                        if (typeof updateTeamScore === 'function') {
+                            updateTeamScore(killerTeam, -1);
+                            console.log(`[SCORE] Friendly Fire! ${killerTeam} -1`);
+                        }
+                    } else if (killerTeam !== victimTeam) {
+                        // NORMAL KILL: POINT (+1)
+                        if (typeof updateTeamScore === 'function') {
+                            updateTeamScore(killerTeam, 1);
+                        }
+                    }
+                }
+
+                // Show Personal Kill Text
+                if (killerId === myId && killerTeam !== victimTeam) {
+                    addFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 12, 0)), '☠️ KILL!', 0xff0000, 1.5);
+                    // Update personal Kills local storage (legacy default)
+                    myKills++;
+                    localStorage.setItem('ragequit_kills', myKills);
+                }
             }
         });
     } else { console.warn("Modalità Offline"); document.getElementById('connection-status').innerText = "OFFLINE"; }

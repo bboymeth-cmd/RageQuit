@@ -2155,7 +2155,7 @@ function toggleWeapon(force) {
         }
     }
 
-    const modeText = isMelee ? "MELEE" : (isRanged ? "RANGED" : "ARCO");
+    const modeText = isMelee ? "MELEE" : (isRanged ? "RANGED" : "BOW");
     document.getElementById('weapon-mode-text').innerText = modeText;
     document.getElementById('weapon-mode-text').style.color = isMelee ? "orange" : (isRanged ? "cyan" : "lightgreen");
 

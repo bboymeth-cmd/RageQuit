@@ -353,21 +353,21 @@ const KEYBINDS = {
 };
 
 const KEY_NAMES = {
-    SPELL_1: '🔹 Dardo Magico',
-    SPELL_2: '💨 Onda Gelo',
-    SPELL_3: '🔥 Palla di Fuoco',
-    SPELL_4: '⛰️ Spuntoni',
+    SPELL_1: '🔹 Magic Dart',
+    SPELL_2: '💨 Frost Wave',
+    SPELL_3: '🔥 Fireball',
+    SPELL_4: '⛰️ Stone Spikes',
     WEAPON_SWITCH: '⚔️ Melee/Whirlwind',
-    BOW_EQUIP: '🏹 Arco',
-    HEAL: '💚 Cura',
-    BLOCK: '🛡️ Parata',
-    UNLOCK_MOUSE: '🔓 Cursore Mouse',
-    MOVE_FORWARD: '⬆️ Avanti',
-    MOVE_LEFT: '⬅️ Sinistra',
-    MOVE_BACKWARD: '⬇️ Indietro',
-    MOVE_RIGHT: '➡️ Destra',
-    JUMP: '🔼 Salto',
-    SPRINT: '⚡ Scatto',
+    BOW_EQUIP: '🏹 Bow',
+    HEAL: '💚 Heal',
+    BLOCK: '🛡️ Parry',
+    UNLOCK_MOUSE: '🔓 Unlock Cursor',
+    MOVE_FORWARD: '⬆️ Forward',
+    MOVE_LEFT: '⬅️ Left',
+    MOVE_BACKWARD: '⬇️ Backward',
+    MOVE_RIGHT: '➡️ Right',
+    JUMP: '🔼 Jump',
+    SPRINT: '⚡ Sprint',
     CONVERT_1: '♥ Stamina → HP',
     CONVERT_2: '💧 HP → Mana',
     CONVERT_3: '⚡ Mana → Stamina'
@@ -403,7 +403,7 @@ function formatKey(code) {
     return code
         .replace('Key', '')
         .replace('Digit', '')
-        .replace('Space', 'SPAZIO')
+        .replace('Space', 'SPACE')
         .replace('ShiftLeft', 'SHIFT')
         .replace('ShiftRight', 'SHIFT')
         .replace('ControlLeft', 'CTRL')
@@ -438,7 +438,7 @@ function initKeybindsUI() {
     sensLabel.style.display = 'flex';
     sensLabel.style.justifyContent = 'space-between';
     sensLabel.style.marginBottom = '10px';
-    sensLabel.innerHTML = `<span class="keybind-label">🎯 SENSIBILITÀ MOUSE</span><span class="keybind-label" id="sens-value">${(mouseSensitivity * 100).toFixed(0)}%</span>`;
+    sensLabel.innerHTML = `<span class="keybind-label">🎯 MOUSE SENSITIVITY</span><span class="keybind-label" id="sens-value">${(mouseSensitivity * 100).toFixed(0)}%</span>`;
 
     const sensSlider = document.createElement('input');
     sensSlider.type = 'range';
@@ -581,7 +581,7 @@ function updateKillCounter() {
     // Mostra sempre il contatore squadre
     teamContainer.style.display = 'flex';
 
-    const teamNames = { red: 'ROSIKONI', black: 'TRIMONI', green: 'FATTONI', purple: 'INFAMI' };
+    const teamNames = { red: 'BLOODMAW', black: 'FROSTBITE', green: 'ROTWOOD', purple: 'VOIDSCAR' };
     teamContainer.innerHTML = ['red', 'black', 'green', 'purple'].map(team =>
         `<div class="team-kill-box ${team}">
                     <div class="team-name">${teamNames[team]}</div>
@@ -590,21 +590,20 @@ function updateKillCounter() {
     ).join('');
 }
 
-function incrementKill(playerId, team) {
-    if (!playerKills[playerId]) playerKills[playerId] = 0;
-    playerKills[playerId]++;
-
-    if (playerId === myId) {
-        myKills++;
-        localStorage.setItem('ragequit_kills', myKills);
+function updateTeamScore(team, amount) {
+    if (team && teamKills[team] !== undefined) {
+        teamKills[team] += amount;
     }
 
-    if (team && teamKills[team] !== undefined) {
-        teamKills[team]++;
+    // Only track personal kills if positive
+    if (amount > 0) {
+        // Note: personal kills logic would go here if needed, but we focus on Team Score
     }
 
     updateKillCounter();
 }
+// Export for global usage
+window.updateTeamScore = updateTeamScore;
 
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let audioEnabled = true; // Default ON
@@ -1108,6 +1107,15 @@ function setupUIEvents() {
     document.getElementById('reset-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         e.target.blur(); // Rimuovi focus dal pulsante
+
+        // APPLICA PENALITÀ PER RESPAWN MANUALE (-1 al team)
+        if (myTeam) {
+            updateTeamScore(myTeam, -1);
+            addToLog("Respawn tattico! -1 Punto", "death");
+            // Notifica gli altri per aggiornare il punteggio
+            if (socket) socket.emit('remoteEffect', { type: 'score_penalty', team: myTeam });
+        }
+
         respawnPlayer();
     });
     document.getElementById('keybinds-btn').addEventListener('click', (e) => {
