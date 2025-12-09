@@ -332,24 +332,24 @@ document.getElementById('menu-btn').addEventListener('click', () => {
 
 // --- SISTEMA KEYBINDS COMPLETO ---
 const KEYBINDS = {
-    SPELL_1: 'Digit1',
-    SPELL_2: 'Digit2',
-    SPELL_3: 'Digit3',
-    SPELL_4: 'Digit4',
+    SPELL_1: 'KeyX',
+    SPELL_2: 'KeyC',
+    SPELL_3: 'KeyV',
+    SPELL_4: 'KeyF',
     WEAPON_SWITCH: 'KeyQ',
     BOW_EQUIP: 'KeyE',
     HEAL: 'KeyR',
     BLOCK: 'Mouse2', // Changed default to Right Mouse Button
-    UNLOCK_MOUSE: 'ControlLeft',
+    UNLOCK_MOUSE: 'AltLeft',
     MOVE_FORWARD: 'KeyW',
     MOVE_LEFT: 'KeyA',
     MOVE_BACKWARD: 'KeyS',
     MOVE_RIGHT: 'KeyD',
     JUMP: 'Space',
     SPRINT: 'ShiftLeft',
-    CONVERT_1: 'KeyF',
-    CONVERT_2: 'KeyX',
-    CONVERT_3: 'KeyC'
+    CONVERT_1: 'Digit1',
+    CONVERT_2: 'Digit3',
+    CONVERT_3: 'Digit2'
 };
 
 const KEY_NAMES = {
@@ -373,7 +373,7 @@ const KEY_NAMES = {
     CONVERT_3: '⚡ Mana → Stamina'
 };
 
-const STORAGE_KEY = 'ragequit_keybinds_v2';
+const STORAGE_KEY = 'ragequit_keybinds_v3';
 let currentBindingAction = null;
 
 // Carica keybinds salvati
@@ -739,13 +739,13 @@ function playCastingSound(playerObj) {
 
     // Osc 1: Sine (Morbido - Base tone)
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(100, now);
-    osc.frequency.exponentialRampToValueAtTime(500, now + 2.5); // Rising pitch 100->500Hz
+    osc.frequency.setValueAtTime(80, now); // LOW PITCH START
+    osc.frequency.exponentialRampToValueAtTime(250, now + 2.5); // Rising pitch 80->250Hz (Less annoying)
 
     // Osc 2: Sawtooth (Croccante - Texture)
     osc2.type = 'sawtooth';
-    osc2.frequency.setValueAtTime(102, now); // Slightly detuned
-    osc2.frequency.exponentialRampToValueAtTime(505, now + 2.5);
+    osc2.frequency.setValueAtTime(82, now); // Slightly detuned
+    osc2.frequency.exponentialRampToValueAtTime(255, now + 2.5);
 
     // Mix (Low volume for texture)
     const splitter = audioCtx.createChannelMerger(2);
@@ -1186,14 +1186,9 @@ function setupControls() {
             e.preventDefault();
         }
 
-        // Blocca Alt sinistro e destro dal far uscire il cursore
-        if (e.code === 'AltLeft' || e.code === 'AltRight') {
-            e.preventDefault();
-            return;
-        }
-
-        // Gestione Ctrl per free mouse (ALT rimosso)
-        if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+        // Gestione Tasto Unlock Dinamico (Alt, Ctrl, ecc.)
+        if (e.code === KEYBINDS.UNLOCK_MOUSE) {
+            e.preventDefault(); // Previeni focus menu browser
             if (!isCtrlPressed) { // Previeni attivazione multipla
                 isCtrlPressed = true;
                 // Esci dal pointer lock per permettere il movimento del mouse

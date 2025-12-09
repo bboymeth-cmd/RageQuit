@@ -1258,6 +1258,10 @@ function playKnightAnimation(animName, forceRestart = false) {
         // Rallenta il salto per renderlo più leggibile
         targetAction.setEffectiveTimeScale(0.6);
         console.log('  [Jump] Slowed: timeScale 0.6');
+    } else if (animName === 'death') {
+        // SLOW DOWN DEATH ANIMATION as requested
+        targetAction.setEffectiveTimeScale(0.7);
+        console.log('  [Death] Slowed: timeScale 0.7');
     } else if (animName === 'powerup') {
         // Powerup: imposta durata completa ma sarà bypassabile dalla parata
         targetAction.setEffectiveTimeScale(1.0);
@@ -2868,8 +2872,13 @@ function playEnemyKnightAnimation(playerObj, name, isOneShot = false, forceResta
     }
 
     newAction.reset();
-    newAction.timeScale = 1; // Ensure normal speed (fix for castHold unfreeze)
-    newAction.setEffectiveTimeScale(1);
+
+    // Default timeScale
+    let timeScale = 1.0;
+    if (name === 'death') timeScale = 0.7; // Slow down death as requested
+
+    newAction.timeScale = timeScale;
+    newAction.setEffectiveTimeScale(timeScale);
     newAction.setEffectiveWeight(1);
 
     // FIX T-POSE: Don't fade in combat animations, snap to them for responsiveness and to avoid low-weight gaps

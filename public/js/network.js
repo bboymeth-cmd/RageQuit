@@ -498,10 +498,10 @@ function initMultiplayer() {
                 // ANIMAZIONE DEATH per giocatore locale
                 if (typeof playKnightAnimation === 'function' && knightModel && knightModel.visible) {
                     playKnightAnimation('death', true);
-                    // Nascondi dopo animazione (circa 2 secondi)
+                    // Nascondi dopo animazione (circa 3 secondi per death 0.7x)
                     setTimeout(() => {
                         if (playerStats.isDead) playerMesh.visible = false;
-                    }, 2000);
+                    }, 3000);
                 } else {
                     playerMesh.visible = false;
                 }
@@ -539,7 +539,7 @@ function initMultiplayer() {
                         if (otherPlayers[data.id] && otherPlayers[data.id].mesh.userData.isDead) {
                             otherPlayers[data.id].mesh.visible = false;
                         }
-                    }, 2000);
+                    }, 3000);
                 } else {
                     otherPlayers[data.id].mesh.visible = false;
                 }
