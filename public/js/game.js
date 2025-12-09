@@ -96,9 +96,9 @@ const SETTINGS = {
 
     // JUMP SETTINGS
     jumpForce: 200.0,
-    jumpCooldown: 800,
+    jumpCooldown: 600, // Reduced from 800
     jumpCost: 10,
-    gravity: 800.0,
+    gravity: 600.0, // Reduced from 800
 
     // Missile (Dardo)
     missileSpeed: 900.0,
@@ -132,12 +132,13 @@ const SETTINGS = {
     arrowDmg: 15,
     arrowCost: 10, // Aumentato da 5 a 10 stamina
     arrowGravity: 200, // GRAVITÀ FRECCIA RIDOTTA
+    arrowKnockback: 100, // NUOVO: Knockback aggiunto all'arco
 
-    fireRate: 400, meleeRate: 1000,
+    fireRate: 400, meleeRate: 800, // Ridotto a 0.8s
     meleeRange: 20, // Ridotta da 32 a 20 come richiesto
     meleeDmg: 15,
     meleeStaminaCost: 5,
-    meleeKnockbackForce: 100,
+    meleeKnockbackForce: 0, // Knockback rimosso
 
     manaRegen: 2.0,
     manaRegen: 2.0,
@@ -148,8 +149,9 @@ const SETTINGS = {
     conversionCost: 5, conversionGain: 5, conversionCooldown: 1000,
     whirlwindDmg: 30, whirlwindRadius: 25, whirlwindCost: 10, whirlwindCooldown: 4000, // Raddoppiato da 2000 a 4000ms
     spikesCooldown: 3000,
-    blockStaminaCost: 0.5,
-    blockMitigation: 0.7
+    blockStaminaCost: 0.4, // 0.4 * 10 = 4 stamina/sec
+    blockMitigation: 0.7,
+    hpRegen: 0.5 // New HP Regen setting
 };
 
 // --- BACKGROUND THROTTLING FIX ---
@@ -1218,6 +1220,17 @@ function setupControls() {
                 const now = performance.now();
                 if (!isJumpKeyPressed && canJump && (now - lastJumpTime > SETTINGS.jumpCooldown) && playerStats.stamina >= SETTINGS.jumpCost) {
                     velocity.y += SETTINGS.jumpForce; playerStats.stamina -= SETTINGS.jumpCost; lastJumpTime = now; canJump = false; isJumpKeyPressed = true;
+
+                    // DYNAMIC JUMP IMPULSE (Forward Momentum)
+                    if (moveForward) {
+                        // Apply extra forward force if moving forward
+                        // Run: 100, Walk: 50 (Further reduced)
+                        // Works in all modes (Melee, Block, Ranged, Bow)
+                        const impulse = isSprinting ? 100 : 50;
+                        const rotY = playerMesh.rotation.y;
+                        velocity.x -= Math.sin(rotY) * impulse;
+                        velocity.z -= Math.cos(rotY) * impulse;
+                    }
                 }
                 break;
             case KEYBINDS.SPRINT: isSprinting = true; break;

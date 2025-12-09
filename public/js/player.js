@@ -2218,6 +2218,7 @@ function updateSwordAnimation(delta) {
 
 function updatePhysics(delta) {
     if (playerStats.mana < playerStats.maxMana) playerStats.mana += SETTINGS.manaRegen * delta;
+    if (playerStats.hp < playerStats.maxHp && SETTINGS.hpRegen > 0) playerStats.hp += SETTINGS.hpRegen * delta;
 
     // FIX: Sprint Cooldown Hysteresis
     if (playerStats.stamina <= 0) {
@@ -2229,7 +2230,8 @@ function updatePhysics(delta) {
 
     let isRegenStaminaBlocked = isBlocking || isWhirlwinding;
     // FIX: Use sprintCooldown check instead of raw stamina > 0
-    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown && !isBlocking) {
+    // ENABLE SPRINT WHILE BLOCKING: Removed !isBlocking check
+    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown) {
         playerStats.stamina -= SETTINGS.sprintStaminaCostPerSec * delta; isRegenStaminaBlocked = true;
     }
     if (isBlocking) {
@@ -2240,9 +2242,12 @@ function updatePhysics(delta) {
     }
     let speed = SETTINGS.speed;
     if (velocity.y != 0) playerStats.isFalling = true;
-    if (isBlocking) speed *= 0.5;
+    // BLOCK PENALTY: Only slow down if NOT sprinting (allows "Running Guard")
+    if (isBlocking && !isSprinting) speed *= 0.5;
+
     // FIX: Use sprintCooldown check
-    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown && !isBlocking) { speed *= SETTINGS.sprintMulti; }
+    // ENABLE SPRINT WHILE BLOCKING: Removed !isBlocking check
+    if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown) { speed *= SETTINGS.sprintMulti; }
 
     velocity.x -= velocity.x * 5 * delta; velocity.z -= velocity.z * 5 * delta; velocity.y -= SETTINGS.gravity * delta;
 

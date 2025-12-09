@@ -24,7 +24,10 @@ const WHIRLWIND_DURATION = 0.8;
 
 function startCasting(spellId, type, key) {
     if (castingState.active) return;
-    let castTime = 0.5; if (spellId === 1) castTime = 0.2; if (spellId === 4) castTime = 0.0;
+    let castTime = 0.5;
+    if (spellId === 1) castTime = 0.2;
+    if (spellId === 3) castTime = 0.7; // Fireball increased to 0.7s
+    if (spellId === 4) castTime = 0.0;
 
     if (type === 'bow_shot') {
         castTime = SETTINGS.bowCastTime;
@@ -335,12 +338,12 @@ function performWhirlwind() {
         playKnightAnimation('whirlwind', true);
     }
     isWhirlwinding = true;
-    let whirlDurationMs = 500; // fallback
-    if (knightAnimations.whirlwind) {
-        const clipDur = knightAnimations.whirlwind.getClip().duration / knightAnimations.whirlwind.getEffectiveTimeScale();
-        whirlDurationMs = Math.round(clipDur * 1000);
-        console.log(`[WHIRLWIND] Flag duration set to clip length: ${clipDur.toFixed(2)}s`);
-    }
+    let whirlDurationMs = 600; // Fixed duration requested by user
+    // if (knightAnimations.whirlwind) {
+    //     const clipDur = knightAnimations.whirlwind.getClip().duration / knightAnimations.whirlwind.getEffectiveTimeScale();
+    //     whirlDurationMs = Math.round(clipDur * 1000);
+    //     console.log(`[WHIRLWIND] Flag duration set to clip length: ${clipDur.toFixed(2)}s`);
+    // }
     setTimeout(() => { isWhirlwinding = false; }, whirlDurationMs);
 
     spawnParticles(playerMesh.position, 0xffffff, 40, 60, 0.6, false);
@@ -644,6 +647,13 @@ function updateProjectiles(delta) {
                             socket.emit('playerPushed', { targetId: targetId, forceY: SETTINGS.fireballUpForce, damage: mitigatedDmg });
                             checkSplashDamage(hitPoint, SETTINGS.fireballRadius, 5, false);
                             addToLog(`Colpito ${otherPlayers[targetId].username} con Palla di Fuoco!`, "dmg-dealt");
+                        } else if (p.userData.type === 5) {
+                            // ARROW KNOCKBACK
+                            const forceVec = p.userData.velocity.clone().normalize().multiplyScalar(SETTINGS.arrowKnockback);
+                            // Aggiunge un po' di lift verticale per evitare attrito a terra
+                            forceVec.y = 150;
+                            socket.emit('playerPushed', { targetId: targetId, forceVec: forceVec, damage: mitigatedDmg });
+                            addToLog(`Colpito ${otherPlayers[targetId].username} con Freccia!`, "dmg-dealt");
                         } else {
                             socket.emit('playerHit', {
                                 damage: mitigatedDmg,
