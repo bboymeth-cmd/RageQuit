@@ -24,7 +24,8 @@ function sendPositionUpdate() {
                 },
                 animState: animState,
                 weaponMode: weaponMode,
-                velocity: velocity // Invia anche velocità per predizione
+                velocity: velocity, // Invia anche velocità per predizione
+                ping: currentPing || 0
             });
             lastPositionSent = now;
         }

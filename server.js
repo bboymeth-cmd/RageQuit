@@ -187,12 +187,11 @@ io.on('connection', (socket) => {
 
             players[socket.id].lastUpdate = now; // Timestamp per lag compensation
 
-            // Calculate Latency (Ping)
-            // Client sends 'timestamp' in data (if available) or we estimate via simple diff?
-            // Actually, `playerMovement` doesn't strictly have a client timestamp unless we added it.
-            // Let's assume data.timestamp exists (added in client network.js usually)
-            if (data.timestamp) {
-                // One-way latency estimate (approx)
+            // Store Latency (Ping) sent by client
+            if (data.ping !== undefined) {
+                players[socket.id].latency = data.ping;
+            } else if (data.timestamp) {
+                // Fallback: One-way latency estimate (approx, less reliable)
                 players[socket.id].latency = Math.max(0, now - data.timestamp);
             }
 
