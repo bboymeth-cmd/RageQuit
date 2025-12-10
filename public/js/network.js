@@ -146,8 +146,9 @@ function initMultiplayer() {
                     // 1. LAGG COMPENSATION: Buffer Position
                     if (typeof window.updatePositionBuffer === 'function') {
                         const pos = new THREE.Vector3(playerInfo.position.x, playerInfo.position.y, playerInfo.position.z);
-                        // Use server timestamp if available, else Date.now()
-                        const time = playerInfo.timestamp || Date.now();
+                        // FIX: Use CLIENT time for interpolation to avoid Server/Client clock skew on Render.com
+                        // Using server timestamp caused massive delays if server clock was behind/ahead.
+                        const time = Date.now();
                         window.updatePositionBuffer(playerInfo.id, pos, time);
                     }
 
