@@ -1242,11 +1242,41 @@ function setupControls() {
         if (document.pointerLockElement !== document.body) return;
 
         if (e.code === 'KeyH') {
+            if (e.repeat) return; // Prevent toggling on key hold
             showHitboxes = !showHitboxes;
             addToLog(`Hitboxes: ${showHitboxes ? 'ON' : 'OFF'}`, '#FFA500');
-            if (!showHitboxes) {
-                // Cleanup immediately
-                hitboxHelpers.forEach(helper => scene.remove(helper));
+
+            if (showHitboxes) {
+                // ADD MAP OBSTACLES (Static)
+                obstacles.forEach(o => {
+                    // Prevent duplicates
+                    if (o.getObjectByName('DebugHitbox')) return;
+
+                    // Use Wireframe to show actual geometry rotation
+                    const geom = new THREE.WireframeGeometry(o.geometry);
+                    const mat = new THREE.LineBasicMaterial({ color: 0xffff00, depthTest: false, transparent: true, opacity: 0.5 });
+                    const wireframe = new THREE.LineSegments(geom, mat);
+                    wireframe.name = 'DebugHitbox';
+                    o.add(wireframe); // Attach to object to inherit transform
+                });
+            } else {
+                // Cleanup ALL debug objects from obstacles (Self-Healing)
+                obstacles.forEach(o => {
+                    // Remove all children named 'DebugHitbox'
+                    // Iterate backwards or use filter to avoid index issues during removal
+                    for (let i = o.children.length - 1; i >= 0; i--) {
+                        if (o.children[i].name === 'DebugHitbox') {
+                            o.children[i].geometry.dispose(); // Memory cleanup
+                            o.children[i].material.dispose();
+                            o.remove(o.children[i]);
+                        }
+                    }
+                });
+
+                // Also clear legacy helpers if any (failsafe)
+                hitboxHelpers.forEach(h => {
+                    if (h.parent) h.parent.remove(h.mesh);
+                });
                 hitboxHelpers.length = 0;
             }
         }

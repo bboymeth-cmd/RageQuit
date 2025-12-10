@@ -145,6 +145,77 @@ function createTeamMap() {
         createRock(x, z, random());
     }
 
+    createCentralBridge();
+    createPhysicsTestZone(scene, obstacles);
+}
+
+function createCentralBridge() {
+    // Platform material
+    const platformMat = new THREE.MeshLambertMaterial({ color: 0x444444 });
+
+    // Central Walkable Platform (Height 20)
+    const bridge = new THREE.Mesh(
+        new THREE.BoxGeometry(40, 2, 120),
+        platformMat
+    );
+    bridge.position.set(0, 20, 0);
+    bridge.receiveShadow = true;
+    bridge.castShadow = true;
+    bridge.userData.isWalkable = true; // Flag for physics
+    scene.add(bridge);
+    obstacles.push(bridge); // Add to obstacles for Raycast
+
+    // Ramps (4 sides)
+    const rampLength = 60;
+    const rampHeight = 20; // Reaches from 0 to 20
+    const rampAngle = Math.atan(rampHeight / rampLength); // Calculate exact angle
+
+    // Helper to create ramp
+    const createRamp = (x, z, rotY) => {
+        // Ramp is a rotated box.
+        // Math: Hypotenuse length is sqrt(L^2 + H^2)
+        const hyp = Math.sqrt(rampLength * rampLength + rampHeight * rampHeight);
+
+        const ramp = new THREE.Mesh(
+            new THREE.BoxGeometry(20, 2, hyp), // Width 20
+            platformMat
+        );
+
+        // Position: Needs to be centered half-way up and out
+        // Trigger math for perfect alignment is tricky, simple approx:
+        ramp.position.set(x, rampHeight / 2, z);
+        ramp.rotation.x = -rampAngle; // Incline up
+
+        // Pivot rotation around center of world (0,0)
+        // Actually simpler: Create at origin, rotate container? 
+        // Or just straightforward math since it's cardinal directions
+
+        // Let's do explicit placement for 4 sides
+    };
+
+    // North Ramp (Negative Z)
+    const rampN = new THREE.Mesh(new THREE.BoxGeometry(20, 2, 70), platformMat);
+    rampN.position.set(0, 10, -90); // Center of ramp (bridge ends at -60, ground at -120 approx)
+    rampN.rotation.x = 0.32; // Approx ~18 degrees
+    rampN.castShadow = true;
+    rampN.receiveShadow = true;
+    rampN.userData.isWalkable = true;
+    scene.add(rampN); obstacles.push(rampN);
+
+    // South Ramp (Positive Z)
+    const rampS = new THREE.Mesh(new THREE.BoxGeometry(20, 2, 70), platformMat);
+    rampS.position.set(0, 10, 90);
+    rampS.rotation.x = -0.32;
+    rampS.castShadow = true;
+    rampS.receiveShadow = true;
+    rampS.userData.isWalkable = true;
+    scene.add(rampS); obstacles.push(rampS);
+
+    // East/West Ramps? Maybe just 2 for now to test.
+    // Let's add simple graphical pillars support
+    const support = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 20), platformMat);
+    support.position.set(0, 10, 0);
+    scene.add(support);
 }
 
 
@@ -172,8 +243,8 @@ function createArenaWalls(centerX, centerZ, radius, height, color) {
         wall.castShadow = true;
         wall.receiveShadow = true;
         scene.add(wall);
-        // Non aggiungiamo alle collisioni - solo decorative
-        // obstacles.push(wall);
+        // Add to collisions (Universal System)
+        obstacles.push(wall);
     }
 }
 
@@ -249,3 +320,88 @@ function createFantasyHouse(x, z, seedOffset) {
     // Non aggiungiamo agli obstacles per evitare collisioni bloccanti
 }
 
+
+// ---------------------------------------------------------
+// ZONA TEST FISICA (Richiesta Utente)
+// ---------------------------------------------------------
+function createPhysicsTestZone(scene, obstacles) {
+    const matRed = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+    const matBlue = new THREE.MeshLambertMaterial({ color: 0x0000ff });
+    const matGreen = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
+    const matYellow = new THREE.MeshLambertMaterial({ color: 0xffff00 });
+    const matPurple = new THREE.MeshLambertMaterial({ color: 0x800080 });
+    const matGray = new THREE.MeshLambertMaterial({ color: 0x888888 });
+
+    // 1. Cubo
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10), matRed);
+    cube.position.set(40, 5, 130);
+    scene.add(cube); obstacles.push(cube);
+
+    // 2. Sfera
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(6, 32, 32), matBlue);
+    sphere.position.set(60, 6, 130);
+    scene.add(sphere); obstacles.push(sphere);
+
+    // 3. Cilindro
+    const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 12, 32), matGreen);
+    cylinder.position.set(80, 6, 130);
+    scene.add(cylinder); obstacles.push(cylinder);
+
+    // 4. Piramide (Cono a 4 facce)
+    const pyramid = new THREE.Mesh(new THREE.ConeGeometry(6, 10, 4), matYellow);
+    pyramid.position.set(100, 5, 130);
+    scene.add(pyramid); obstacles.push(pyramid);
+
+    // 5. Cono
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(5, 10, 32), matPurple);
+    cone.position.set(120, 5, 130);
+    scene.add(cone); obstacles.push(cone);
+
+    // 6. Concave Shape: U-Wall Trap
+    const wallBack = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 2), matGray);
+    wallBack.position.set(40, 5, 160);
+    scene.add(wallBack); obstacles.push(wallBack);
+
+    const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 15), matGray);
+    wallLeft.position.set(31, 5, 167.5);
+    scene.add(wallLeft); obstacles.push(wallLeft);
+
+    const wallRight = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 15), matGray);
+    wallRight.position.set(49, 5, 167.5);
+    scene.add(wallRight); obstacles.push(wallRight);
+
+    // 7. Hole Mechanism
+    const holeY = 3;
+    const p1 = new THREE.Mesh(new THREE.BoxGeometry(30, 6, 10), matGray);
+    p1.position.set(100, holeY, 150); p1.userData.isWalkable = true;
+    scene.add(p1); obstacles.push(p1);
+
+    const p2 = new THREE.Mesh(new THREE.BoxGeometry(30, 6, 10), matGray);
+    p2.position.set(100, holeY, 170); p2.userData.isWalkable = true;
+    scene.add(p2); obstacles.push(p2);
+
+    const p3 = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 10), matGray);
+    p3.position.set(80, holeY, 160); p3.userData.isWalkable = true;
+    scene.add(p3); obstacles.push(p3);
+
+    const p4 = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 10), matGray);
+    p4.position.set(120, holeY, 160); p4.userData.isWalkable = true;
+    scene.add(p4); obstacles.push(p4);
+
+    const holeRamp = new THREE.Mesh(new THREE.BoxGeometry(10, 2, 20), matGray);
+    holeRamp.position.set(100, 2, 185); holeRamp.rotation.x = -0.4; holeRamp.userData.isWalkable = true;
+    scene.add(holeRamp); obstacles.push(holeRamp);
+
+    // 8. Escalating Walls (West Side)
+    // Heights: 5, 10, 20, 40, 80
+    const wallHeights = [5, 10, 20, 40, 80];
+    const wallColors = [0x00ff00, 0xadff2f, 0xffff00, 0xffa500, 0xff0000]; // Green->Red
+
+    for (let i = 0; i < wallHeights.length; i++) {
+        const h = wallHeights[i];
+        const w = new THREE.Mesh(new THREE.BoxGeometry(2, h, 20), new THREE.MeshLambertMaterial({ color: wallColors[i] }));
+        w.position.set(-40, h / 2, 130 + (i * 15)); // Spaced along Z
+        w.castShadow = true; w.receiveShadow = true;
+        scene.add(w); obstacles.push(w);
+    }
+}

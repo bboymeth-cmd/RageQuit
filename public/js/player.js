@@ -2277,10 +2277,98 @@ function updatePhysics(delta) {
         moveVec.normalize(); velocity.addScaledVector(moveVec, speed * delta);
         if (!playerStats.isFalling) { distanceSinceStep += speed * delta; if (distanceSinceStep > 400.0) { playSound('step'); distanceSinceStep = 0; } }
     }
+    // PHYSICS: Add Horizontal Collision Probe (Slopes/Walls)
+    // ---------------------------------------------------------
+    const horizVel = new THREE.Vector3(velocity.x, 0, velocity.z);
+    if (horizVel.lengthSq() > 0.1) {
+        const moveDir = horizVel.clone().normalize();
+
+        // PROBE PHYSICS V6: Volume Shield (Width + Height)
+        // Solves "Side Clipping" completely by checking broad frontal area.
+        // Widths: Left Shoulder, Center, Right Shoulder.
+        // Heights: Ankle to Head.
+        const widthOffsets = [-3.0, 0, 3.0];
+        const heightOffsets = [-5, -2, 1, 4, 7, 10, 12];
+        const MAX_STEP_HEIGHT = 3.0;
+
+        // Side vector for width offset (Perpendicular to moveDir)
+        const sideVec = moveDir.clone().cross(new THREE.Vector3(0, 1, 0)).normalize();
+
+        let collisionFound = false;
+
+        // Iterate Width then Height (21 Checkpoints)
+        for (let w of widthOffsets) {
+            for (let h of heightOffsets) {
+                // Calculate Origin for this probe ray
+                // Position + Height Offset + Width Offset (Side)
+                const widthOffsetVec = sideVec.clone().multiplyScalar(w);
+                const probeOrigin = playerMesh.position.clone()
+                    .add(new THREE.Vector3(0, h, 0))
+                    .add(widthOffsetVec);
+
+                const horizRaycaster = new THREE.Raycaster(probeOrigin, moveDir, 0, 5);
+                const horizHits = horizRaycaster.intersectObjects(obstacles, false);
+
+                if (horizHits.length > 0) {
+                    const hit = horizHits[0];
+                    if (hit.distance < 4) {
+                        let isObstacle = true;
+
+                        // SLOPE CHECK
+                        if (hit.face && hit.face.normal.y >= 0.5) {
+                            const feetY = playerMesh.position.y - 6;
+                            const stepDiff = hit.point.y - feetY;
+                            if (stepDiff <= MAX_STEP_HEIGHT) {
+                                isObstacle = false; // Climbable
+                            }
+                        }
+
+                        if (isObstacle) {
+                            velocity.x = 0;
+                            velocity.z = 0;
+                            collisionFound = true;
+                            // console.log(`Blocked by probe: W:${w} H:${h}`); // Optional Debug
+                            break;
+                        }
+                    }
+                }
+            }
+            if (collisionFound) break;
+        }
+    }
+
     playerMesh.position.addScaledVector(velocity, delta);
-    if (playerMesh.position.y <= 6) {
+    // PHYSICS: Raycast Ground Detection
+    // ---------------------------------------------------------
+    let targetPivotY = 6; // Default floor pivot level (Floor at 0, Pivot at 6)
+    const rayOrigin = playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0)); // Start from waist
+    const rayDown = new THREE.Vector3(0, -1, 0);
+    const gravityRaycaster = new THREE.Raycaster(rayOrigin, rayDown, 0, 20); // Check 20 units down
+
+    // Check collision with obstacles (bridges, ramps, boxes)
+    const groundHits = gravityRaycaster.intersectObjects(obstacles, false);
+
+    // Find viable ground (filtered by Step Height)
+    for (let i = 0; i < groundHits.length; i++) {
+        const hit = groundHits[i];
+        const surfaceY = hit.point.y;
+        const currentFeetY = playerMesh.position.y - 6;
+        const maxStepHeight = 3.0; // Max unit climbable in one frame/step
+
+        // If surface is reachable (not too high above feet) OR we are strictly falling from above
+        // If falling from above, currentFeetY > surfaceY, so condition holds.
+        // If walking under, surfaceY > currentFeetY + 3. -> False.
+        if (surfaceY <= currentFeetY + maxStepHeight) {
+            targetPivotY = Math.max(6, surfaceY + 6);
+            break; // Found highest valid ground
+        }
+    }
+
+    // Apply Ground Logic
+    // If we are falling or standing near the detected ground
+    if (playerMesh.position.y <= targetPivotY + 0.5) { // Tolerance
         if (velocity.y <= 0) {
-            playerMesh.position.y = 6;
+            playerMesh.position.y = targetPivotY;
             velocity.y = 0;
             canJump = true;
             playerStats.isFalling = false;
@@ -2288,35 +2376,37 @@ function updatePhysics(delta) {
     } else {
         canJump = false;
     }
+
+    // Ceiling Check
+    // ---------------------------------------------------------
+    const rayUp = new THREE.Vector3(0, 1, 0);
+    const ceilingRaycaster = new THREE.Raycaster(rayOrigin, rayUp, 0, 10); // Check 10 units up
+    const ceilingHits = ceilingRaycaster.intersectObjects(obstacles, false);
+
+    if (ceilingHits.length > 0) {
+        // Distance from waist (origin) to collision point
+        const dist = ceilingHits[0].distance;
+        // If distance is less than head height (approx 7 units from waist)
+        if (dist < 8) {
+            // We hit a ceiling! 
+            if (velocity.y > 0) {
+                velocity.y = 0; // Bonk!
+                // Optional: visual feedback or sound? playSound('step')? Nah.
+            }
+        }
+    }
+    // ---------------------------------------------------------
     playerStats.stamina = Math.max(0, Math.min(playerStats.maxStamina, playerStats.stamina));
 
 
 
+    /* LEGACY PHYSICS: REMOVED IN FAVOR OF UNIVERSAL RAYCAST PROBE (V6)
     obstacles.forEach(o => {
+        if (o.userData.isWalkable) return; // Skip walkables (bridge/ramps) for wall collision
         const box = new THREE.Box3().setFromObject(o);
-        // Check collision at player's feet level (y + 2) and head level (y + 10)
-        const playerFeetPos = playerMesh.position.clone();
-        playerFeetPos.y += 2;
-        const playerHeadPos = playerMesh.position.clone();
-        playerHeadPos.y += 10;
-
-        // Only collide if obstacle is tall enough (above feet but below head)
-        const obstacleHeight = box.max.y - box.min.y;
-        const playerBaseY = playerMesh.position.y;
-
-        // Check if player horizontally overlaps with obstacle
-        const tempBox = box.clone();
-        tempBox.min.y = playerBaseY;
-        tempBox.max.y = playerBaseY + 12; // Player height
-
-        if (tempBox.containsPoint(playerFeetPos) || tempBox.containsPoint(playerHeadPos)) {
-            // Only push back if obstacle is taller than jump height (>8 units)
-            if (obstacleHeight > 8 || box.max.y > playerBaseY + 5) {
-                const dir = new THREE.Vector3().subVectors(playerMesh.position, o.position).normalize().setY(0);
-                playerMesh.position.addScaledVector(dir, 10 * delta * 60);
-            }
-        }
+        // ... (Old Logic Removed) ...
     });
+    */
 
     // NUOVO: Collisioni player-to-player (previene che i giocatori si attraversino)
     Object.values(otherPlayers).forEach(op => {
