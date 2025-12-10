@@ -134,35 +134,54 @@ function initMultiplayer() {
         });
         socket.on('playerDisconnected', (id) => { if (otherPlayers[id]) addToLog(otherPlayers[id].username + " è uscito.", "kill"); removeOtherPlayer(id); });
         socket.on('updateUsername', (data) => { if (otherPlayers[data.id]) { otherPlayers[data.id].username = data.username; const oldLabel = otherPlayers[data.id].mesh.children.find(c => c.userData.isLabel); if (oldLabel) otherPlayers[data.id].mesh.remove(oldLabel); const newLabel = createPlayerLabel(data.username); newLabel.position.y = 14; newLabel.userData.isLabel = true; otherPlayers[data.id].mesh.add(newLabel); otherPlayers[data.id].mesh.userData.hpBar = newLabel.userData.hpBar; } });
-        socket.on('playerMoved', (playerInfo) => {
-            if (otherPlayers[playerInfo.id]) {
-                const p = otherPlayers[playerInfo.id];
+        socket.on('worldUpdate', (updates) => {
+            if (!Array.isArray(updates)) return;
 
-                // Se il giocatore era morto e si muove, significa che è respawnato
-                if (p.mesh.userData.isDead) {
-                    p.mesh.userData.isDead = false;
-                    p.mesh.visible = true;
+            updates.forEach(playerInfo => {
+                if (playerInfo.id === myId || playerInfo.id === socket.id) return;
 
-                    // SAFETY: Ensure low poly parts are hidden on respawn
-                    if (p.limbs) {
-                        if (p.limbs.torso) p.limbs.torso.visible = false;
-                        if (p.limbs.chest) p.limbs.chest.visible = false;
-                        if (p.limbs.legL) p.limbs.legL.visible = false;
-                        if (p.limbs.legR) p.limbs.legR.visible = false;
-                        if (p.limbs.armL) p.limbs.armL.visible = false;
-                        if (p.limbs.armR) p.limbs.armR.visible = false;
-                        if (p.limbs.head) p.limbs.head.visible = false;
+                if (otherPlayers[playerInfo.id]) {
+                    const p = otherPlayers[playerInfo.id];
+
+                    // 1. LAGG COMPENSATION: Buffer Position
+                    if (typeof window.updatePositionBuffer === 'function') {
+                        const pos = new THREE.Vector3(playerInfo.position.x, playerInfo.position.y, playerInfo.position.z);
+                        // Use server timestamp if available, else Date.now()
+                        const time = playerInfo.timestamp || Date.now();
+                        window.updatePositionBuffer(playerInfo.id, pos, time);
+                    }
+
+                    // 2. Respawn / Visibility Check
+                    if (p.mesh.userData.isDead) {
+                        p.mesh.userData.isDead = false;
+                        p.mesh.visible = true;
+
+                        // SAFETY: Ensure low poly parts are hidden on respawn
+                        if (p.limbs) {
+                            if (p.limbs.torso) p.limbs.torso.visible = false;
+                            if (p.limbs.chest) p.limbs.chest.visible = false;
+                            if (p.limbs.legL) p.limbs.legL.visible = false;
+                            if (p.limbs.legR) p.limbs.legR.visible = false;
+                            if (p.limbs.armL) p.limbs.armL.visible = false;
+                            if (p.limbs.armR) p.limbs.armR.visible = false;
+                            if (p.limbs.head) p.limbs.head.visible = false;
+                        }
+                    }
+
+                    // 3. Update Rotation & State (Direct set, smoothed in render loop)
+                    // Note: We don't set targetPos anymore because we use the buffer!
+                    // But we keep targetPos logic for rotation or if buffer missing?
+                    // Let's remove targetPos setting to enforce buffer usage.
+
+                    p.mesh.userData.targetRot = playerInfo.rotation;
+                    p.mesh.userData.animState = playerInfo.animState;
+
+                    if (p.mesh.userData.weaponMode !== playerInfo.weaponMode) {
+                        p.mesh.userData.weaponMode = playerInfo.weaponMode;
+                        updateOpponentWeaponVisuals(otherPlayers[playerInfo.id], playerInfo.weaponMode);
                     }
                 }
-
-                p.mesh.userData.targetPos = playerInfo.position;
-                p.mesh.userData.targetRot = playerInfo.rotation;
-                p.mesh.userData.animState = playerInfo.animState;
-                if (p.mesh.userData.weaponMode !== playerInfo.weaponMode) {
-                    p.mesh.userData.weaponMode = playerInfo.weaponMode;
-                    updateOpponentWeaponVisuals(otherPlayers[playerInfo.id], playerInfo.weaponMode);
-                }
-            }
+            });
         });
 
         socket.on('updateTeamColor', (data) => {

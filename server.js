@@ -5,9 +5,12 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, {
     cors: { origin: "*" },
-    pingTimeout: 5000,
-    pingInterval: 10000
+    pingTimeout: 30000,
+    pingInterval: 25000
 });
+
+const TICK_RATE = 20;
+const TICK_INTERVAL = 1000 / TICK_RATE;
 const path = require('path');
 
 // Variabili globali
@@ -173,11 +176,11 @@ io.on('connection', (socket) => {
             players[socket.id].weaponMode = data.weaponMode;
             players[socket.id].lastUpdate = now; // Timestamp per lag compensation
 
-            socket.broadcast.emit('playerMoved', {
-                id: socket.id,
-                timestamp: now, // Invia timestamp server
-                ...data
-            });
+            players[socket.id].lastUpdate = now; // Timestamp per lag compensation
+
+            // SERVER OPTIMIZATION: Broadcast removed. Updates are now handled by the Tick Loop.
+            // socket.broadcast.emit('playerMoved', { ... }); 
+
         }
     });
 
@@ -391,13 +394,38 @@ io.on('connection', (socket) => {
     });
 });
 
+// --- SERVER TICK LOOP (20Hz) ---
+setInterval(() => {
+    const playerCount = Object.keys(players).length;
+    if (playerCount === 0) return;
+
+    const updates = [];
+    Object.values(players).forEach(p => {
+        updates.push({
+            id: p.id,
+            position: p.position,
+            rotation: p.rotation,
+            animState: p.animState,
+            weaponMode: p.weaponMode,
+            timestamp: Date.now()
+        });
+    });
+
+    // Broadcast snapshot (compressed if possible, but JSON for now)
+    io.emit('worldUpdate', updates);
+
+}, TICK_INTERVAL);
+
+// Cleanup disconnections (Relaxed timeout: 30s)
 setInterval(() => {
     const now = Date.now();
     Object.keys(players).forEach(id => {
-        if (lastSeen[id] && (now - lastSeen[id] > 10000)) {
+        if (lastSeen[id] && (now - lastSeen[id] > 30000)) { // 30 seconds timeout
+            console.log(`[TIMEOUT] Removing player ${id} after 30s inactivity`);
             delete players[id];
             delete lastSeen[id];
             io.emit('playerDisconnected', id);
+            broadcastTeamCounts(); // Ensure counts are updated
         }
     });
 }, 5000);

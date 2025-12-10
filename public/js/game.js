@@ -1398,6 +1398,10 @@ function updatePositionBuffer(playerId, position, timestamp) {
     positionBuffer[playerId] = positionBuffer[playerId].filter(p => p.time > cutoff);
 }
 
+// Export for network.js and player.js
+window.updatePositionBuffer = updatePositionBuffer;
+window.interpolatePosition = interpolatePosition;
+
 function interpolatePosition(playerId) {
     const buffer = positionBuffer[playerId];
     if (!buffer || buffer.length < 2) return null;

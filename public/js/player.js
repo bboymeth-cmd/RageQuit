@@ -2045,14 +2045,25 @@ function updateAnimations(delta) {
         shieldMesh.visible = false;
     }
 
-    Object.values(otherPlayers).forEach(p => {
+    Object.entries(otherPlayers).forEach(([id, p]) => {
         const mesh = p.mesh;
         if (p.isDead) return;
         const enemyNeutralArmY = p.mesh.userData.weaponMode === 'melee' ? neutralArmY : 6.0;
         p.limbs.armR.position.y = enemyNeutralArmY; p.limbs.armL.position.y = enemyNeutralArmY;
         const distMoved = mesh.position.distanceTo(p.lastStepPos || mesh.position);
         if (distMoved > 4.0) { playSound('step', mesh.position); p.lastStepPos.copy(mesh.position); }
-        if (mesh.userData.targetPos) mesh.position.lerp(mesh.userData.targetPos, 0.3);
+
+        // INTERPOLATION FIX
+        if (typeof window.interpolatePosition === 'function') {
+            const smoothPos = window.interpolatePosition(id);
+            if (smoothPos) {
+                mesh.position.copy(smoothPos);
+            } else if (mesh.userData.targetPos) {
+                // Fallback (legacy)
+                mesh.position.lerp(mesh.userData.targetPos, 0.3);
+            }
+        }
+
         if (mesh.userData.targetRot) { mesh.rotation.set(mesh.userData.targetRot.x, mesh.userData.targetRot.y, mesh.userData.targetRot.z); }
         const state = mesh.userData.animState; const limbs = p.limbs; let isEnemyAttacking = false;
         if (mesh.userData.isWhirlwinding) {
