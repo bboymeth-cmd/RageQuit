@@ -17,6 +17,7 @@ const path = require('path');
 let players = {};
 let lastSeen = {};
 let serverStartTime = Date.now();
+let teamScores = { red: 0, black: 0, green: 0, purple: 0 };
 
 // Helper per calcolare distanza 3D
 function distance3D(pos1, pos2) {
@@ -99,12 +100,20 @@ io.on('connection', (socket) => {
             isDead: false,
             teamColor: userData.teamColor || 0x2c3e50,
             gameMode: 'team',
-            team: userData.team || null
+            team: userData.team || null,
+            // Stats
+            kills: 0,
+            deaths: 0,
+            latency: 0
         };
 
         // Debug trace: emit currentPlayers to the joining socket and broadcast newPlayer
         console.log(`TRACE: emitting currentPlayers to ${socket.id} (playersCount=${Object.keys(players).length})`);
         socket.emit('currentPlayers', players);
+
+        // SYNC SCORES: Send current team scores to new player
+        socket.emit('updateTeamScores', teamScores);
+
         console.log(`TRACE: broadcasting newPlayer from ${socket.id} -> id=${players[socket.id].id}`);
         socket.broadcast.emit('newPlayer', players[socket.id]);
 
@@ -178,6 +187,15 @@ io.on('connection', (socket) => {
 
             players[socket.id].lastUpdate = now; // Timestamp per lag compensation
 
+            // Calculate Latency (Ping)
+            // Client sends 'timestamp' in data (if available) or we estimate via simple diff?
+            // Actually, `playerMovement` doesn't strictly have a client timestamp unless we added it.
+            // Let's assume data.timestamp exists (added in client network.js usually)
+            if (data.timestamp) {
+                // One-way latency estimate (approx)
+                players[socket.id].latency = Math.max(0, now - data.timestamp);
+            }
+
             // SERVER OPTIMIZATION: Broadcast removed. Updates are now handled by the Tick Loop.
             // socket.broadcast.emit('playerMoved', { ... }); 
 
@@ -224,6 +242,42 @@ io.on('connection', (socket) => {
                     killerId: socket.id,
                     position: players[targetId].position
                 });
+
+                // SCORE UPDATE (PUSH)
+                const killer = players[socket.id];
+                const victim = players[targetId];
+
+                if (killer && victim) {
+                    const killerTeam = killer.team;
+                    const victimTeam = victim.team;
+
+                    if (killerTeam && victimTeam) {
+                        if (killerTeam !== victimTeam) {
+                            if (teamScores[killerTeam] !== undefined) teamScores[killerTeam]++;
+                        } else if (socket.id !== targetId) {
+                            if (teamScores[killerTeam] !== undefined) teamScores[killerTeam]--;
+                        }
+
+                        // PLAYER STATS UPDATE
+                        if (killerTeam !== victimTeam) {
+                            killer.kills++;
+                        } else if (socket.id !== targetId) {
+                            killer.kills--;
+                        }
+                    } // end if killerTeam && victimTeam
+                } // end if killer && victim
+
+                // Victim Death (Always count)
+                victim.deaths++;
+
+                io.emit('updateTeamScores', teamScores);
+
+                // IMMEDIATE SCOREBOARD UPDATE
+                const stats = {};
+                Object.values(players).forEach(p => {
+                    stats[p.id] = { kills: p.kills || 0, deaths: p.deaths || 0, latency: p.latency || 0 };
+                });
+                io.emit('scoreboardUpdate', stats);
             }
 
             // Emit to the target player so they can execute the push effect
@@ -288,6 +342,8 @@ io.on('connection', (socket) => {
 
             // CRITICAL: Se il player muore, invia PRIMA playerDied POI updateHealth
             // Questo previene race conditions dove il client riceve HP update prima della morte
+            // CRITICAL: Se il player muore, invia PRIMA playerDied POI updateHealth
+            // Questo previene race conditions dove il client riceve HP update prima della morte
             if (players[targetId].hp <= 0 && !players[targetId].isDead) {
                 players[targetId].isDead = true;
                 console.log(`[SERVER] Player ${targetId} morto (HIT) - broadcasting playerDied PRIMA di updateHealth`);
@@ -297,6 +353,44 @@ io.on('connection', (socket) => {
                     killerId: socket.id,
                     position: players[targetId].position
                 });
+
+                // SCORE UPDATE
+                const killer = players[socket.id];
+                const victim = players[targetId];
+
+                if (killer && victim) {
+                    const killerTeam = killer.team;
+                    const victimTeam = victim.team;
+
+                    if (killerTeam && victimTeam) {
+                        if (killerTeam !== victimTeam) {
+                            // Enemy Kill: +1
+                            if (teamScores[killerTeam] !== undefined) teamScores[killerTeam]++;
+                        } else if (socket.id !== targetId) {
+                            // Friendly Fire: -1
+                            if (teamScores[killerTeam] !== undefined) teamScores[killerTeam]--;
+                        }
+
+                        // PLAYER STATS UPDATE
+                        if (killerTeam !== victimTeam) {
+                            killer.kills++;
+                        } else if (socket.id !== targetId) {
+                            killer.kills--; // Penalty for TK
+                        }
+                    }
+                }
+                // Victim Death (Always count)
+                victim.deaths++;
+
+                // Broadcast NEW Scores
+                io.emit('updateTeamScores', teamScores);
+
+                // IMMEDIATE SCOREBOARD UPDATE
+                const stats = {};
+                Object.values(players).forEach(p => {
+                    stats[p.id] = { kills: p.kills || 0, deaths: p.deaths || 0, latency: p.latency || 0 };
+                });
+                io.emit('scoreboardUpdate', stats);
             }
 
             // Send health update to all (DOPO playerDied se necessario)
@@ -386,6 +480,14 @@ io.on('connection', (socket) => {
         console.log('Disconnesso: ' + socket.id);
         if (players[socket.id]) {
             delete players[socket.id];
+            // Rimuovi il giocatore dalla simulazione dell'AI se necessario
+            io.emit('removeOtherPlayer', socket.id);
+
+            // CHECK IF SERVER IS EMPTY
+            if (Object.keys(players).length === 0) {
+                console.log('[SERVER] Server vuoto - Reset Punteggi');
+                teamScores = { red: 0, black: 0, green: 0, purple: 0 };
+            }
             io.emit('playerDisconnected', socket.id);
             // Broadcast aggiornamento conteggio squadre
             broadcastTeamCounts();
@@ -429,6 +531,24 @@ setInterval(() => {
         }
     });
 }, 5000);
+
+// --- SCOREBOARD BROADCAST LOOP (1Hz) ---
+setInterval(() => {
+    const stats = {};
+    let hasPlayers = false;
+    Object.values(players).forEach(p => {
+        hasPlayers = true;
+        stats[p.id] = {
+            kills: p.kills || 0,
+            deaths: p.deaths || 0,
+            latency: p.latency || 0
+        };
+    });
+
+    if (hasPlayers) {
+        io.emit('scoreboardUpdate', stats);
+    }
+}, 1000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

@@ -349,7 +349,8 @@ const KEYBINDS = {
     SPRINT: 'ShiftLeft',
     CONVERT_1: 'Digit1',
     CONVERT_2: 'Digit3',
-    CONVERT_3: 'Digit2'
+    CONVERT_3: 'Digit2',
+    SCOREBOARD: 'Tab'
 };
 
 const KEY_NAMES = {
@@ -370,7 +371,8 @@ const KEY_NAMES = {
     SPRINT: '⚡ Sprint',
     CONVERT_1: '♥ Stamina → HP',
     CONVERT_2: '💧 HP → Mana',
-    CONVERT_3: '⚡ Mana → Stamina'
+    CONVERT_3: '⚡ Mana → Stamina',
+    SCOREBOARD: '📊 Scoreboard'
 };
 
 const STORAGE_KEY = 'ragequit_keybinds_v3';
@@ -1194,6 +1196,17 @@ function setupControls() {
             e.preventDefault();
         }
 
+        // SCOREBOARD TOGGLE (Show on Hold)
+        if (e.code === KEYBINDS.SCOREBOARD) {
+            e.preventDefault();
+            updateScoreboard();
+            const sb = document.getElementById('scoreboard');
+            if (sb) sb.style.display = 'flex';
+            // Non ritornare qui se vuoi permettere altre azioni? 
+            // Ma Tab è speciale, meglio bloccare.
+            return;
+        }
+
         // Gestione Tasto Unlock Dinamico (Alt, Ctrl, ecc.)
         if (e.code === KEYBINDS.UNLOCK_MOUSE) {
             e.preventDefault(); // Previeni focus menu browser
@@ -1208,6 +1221,12 @@ function setupControls() {
         }
 
         if (keyToRebind || playerStats.isDead) return;
+
+        // BLOCK GAME ACTIONS IF MOUSE IS UNLOCKED (Visible)
+        // Exceptions: 'KeyH' (debug), 'Enter' (chat) are handled above.
+        // We also want to allow movement? No, user said "disable keys in game".
+        if (document.pointerLockElement !== document.body) return;
+
         if (e.code === 'KeyH') {
             showHitboxes = !showHitboxes;
             addToLog(`Hitboxes: ${showHitboxes ? 'ON' : 'OFF'}`, '#FFA500');
@@ -1318,9 +1337,23 @@ function setupControls() {
 
         if (keyToRebind || playerStats.isDead) return;
 
+        // SCOREBOARD RELEASE (Hide)
+        if (e.code === KEYBINDS.SCOREBOARD) {
+            const sb = document.getElementById('scoreboard');
+            if (sb) sb.style.display = 'none';
+        }
+
         // Reset flag salto quando Space viene rilasciato
         if (e.code === KEYBINDS.JUMP) {
             isJumpKeyPressed = false;
+        }
+
+        // BLOCK GAME ACTIONS IF MOUSE IS UNLOCKED
+        if (document.pointerLockElement !== document.body) {
+            // Ensure we stop actions if we just unlocked
+            moveForward = false; moveLeft = false; moveBackward = false; moveRight = false; isSprinting = false;
+            stopBlocking();
+            return;
         }
 
         switch (e.code) {
@@ -1684,3 +1717,103 @@ function updateHitboxVisualization() {
 
 // Non inizializzare subito - aspetta che menu.js chiami startGame()
 // init();
+
+// === SCOREBOARD LOGIC ===
+function updateScoreboard() {
+    const sbContainer = document.getElementById('scoreboard-teams');
+    if (!sbContainer) return;
+
+    sbContainer.innerHTML = ''; // Clear
+
+    // Gather all players
+    const allPlayers = [];
+
+    // Add Me using global cache if available, or fallback to 0/0
+    const myStats = (window.playerStatsCache && window.playerStatsCache[myId]) || { kills: 0, deaths: 0, latency: currentPing || 0 };
+
+    if (myTeam) {
+        allPlayers.push({
+            username: myUsername,
+            team: myTeam,
+            kills: myStats.kills,
+            deaths: myStats.deaths,
+            ping: myStats.latency,
+            isMe: true,
+            id: myId
+        });
+    }
+
+    // Add Others
+    Object.values(otherPlayers).forEach(p => {
+        if (p.team) {
+            const stats = (window.playerStatsCache && window.playerStatsCache[p.id]) || p.stats || { kills: 0, deaths: 0, latency: 0 };
+            allPlayers.push({
+                username: p.username || 'Unknown',
+                team: p.team,
+                kills: stats.kills,
+                deaths: stats.deaths,
+                ping: stats.latency,
+                isMe: false,
+                id: p.id
+            });
+        }
+    });
+
+    // Map internal team ids to display names from HTML
+    const TEAM_DISPLAY_NAMES = {
+        'red': 'BLOODMAW',
+        'black': 'FROSTBITE',
+        'green': 'ROTWOOD',
+        'purple': 'VOIDSCAR'
+    };
+
+    const teams = ['red', 'black', 'green', 'purple'];
+    teams.forEach(team => {
+        const teamPlayers = allPlayers.filter(p => p.team === team);
+
+        // Create Column
+        const col = document.createElement('div');
+        col.className = `sb-team-column ${team}`;
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'sb-team-header';
+        // Add Team Score
+        const score = (typeof teamKills !== 'undefined' && teamKills[team]) ? teamKills[team] : 0;
+        const name = TEAM_DISPLAY_NAMES[team] || team.toUpperCase();
+        header.innerHTML = `${name}<br><span style="font-size:0.8em; color:#ffd700">SCORE: ${score}</span>`;
+        col.appendChild(header);
+
+        // Sub-Header (Columns)
+        const subHeader = document.createElement('div');
+        subHeader.className = 'sb-col-header';
+        subHeader.innerHTML = `<span>PLAYER</span><span class="sb-stat">K</span><span class="sb-stat">D</span><span class="sb-stat">PING</span>`;
+        col.appendChild(subHeader);
+
+        // Sort by kills (desc)
+        teamPlayers.sort((a, b) => b.kills - a.kills);
+
+        teamPlayers.forEach(p => {
+            const entry = document.createElement('div');
+            entry.className = 'sb-player-entry' + (p.isMe ? ' me' : '');
+
+            // Format Ping Color
+            const pingColor = p.ping < 50 ? '#0f0' : p.ping < 100 ? '#ff0' : '#f00';
+
+            entry.innerHTML = `
+                <span class="sb-player-name">${p.username}</span>
+                <span class="sb-stat-group">
+                    <span class="sb-stat val-k">${p.kills}</span>
+                    <span class="sb-stat val-d">${p.deaths}</span>
+                    <span class="sb-stat val-p" style="color:${pingColor}">${Math.round(p.ping)}</span>
+                </span>
+            `;
+            col.appendChild(entry);
+        });
+
+        sbContainer.appendChild(col);
+    });
+}
+
+// Ensure updateScoreboard is available globally
+window.updateScoreboard = updateScoreboard;

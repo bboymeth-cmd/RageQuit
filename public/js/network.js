@@ -133,6 +133,23 @@ function initMultiplayer() {
             }
         });
         socket.on('playerDisconnected', (id) => { if (otherPlayers[id]) addToLog(otherPlayers[id].username + " è uscito.", "kill"); removeOtherPlayer(id); });
+
+        socket.on('updateTeamScores', (scores) => {
+            if (scores) {
+                // Update global variable in game.js
+                if (typeof teamKills !== 'undefined') {
+                    teamKills.red = scores.red || 0;
+                    teamKills.black = scores.black || 0;
+                    teamKills.green = scores.green || 0;
+                    teamKills.purple = scores.purple || 0;
+
+                    if (typeof updateKillCounter === 'function') {
+                        updateKillCounter();
+                    }
+                }
+            }
+        });
+
         socket.on('updateUsername', (data) => { if (otherPlayers[data.id]) { otherPlayers[data.id].username = data.username; const oldLabel = otherPlayers[data.id].mesh.children.find(c => c.userData.isLabel); if (oldLabel) otherPlayers[data.id].mesh.remove(oldLabel); const newLabel = createPlayerLabel(data.username); newLabel.position.y = 14; newLabel.userData.isLabel = true; otherPlayers[data.id].mesh.add(newLabel); otherPlayers[data.id].mesh.userData.hpBar = newLabel.userData.hpBar; } });
         socket.on('worldUpdate', (updates) => {
             if (!Array.isArray(updates)) return;
@@ -183,6 +200,43 @@ function initMultiplayer() {
                     }
                 }
             });
+        });
+
+        socket.on('scoreboardUpdate', (stats) => {
+            if (!stats) return;
+
+            // Store global map of stats for UI usage
+            // We can attach it to `otherPlayers` or a global `playerStatsCache`
+            if (!window.playerStatsCache) window.playerStatsCache = {};
+
+            Object.keys(stats).forEach(id => {
+                const data = stats[id];
+                window.playerStatsCache[id] = data;
+
+                // Also update local objects if they exist
+                if (otherPlayers[id]) {
+                    otherPlayers[id].stats = data;
+                }
+
+                // If it's me
+                if (id === myId) {
+                    // Verify local sync (optional)
+                    // console.log(`My Ping: ${data.latency}, K/D: ${data.kills}/${data.deaths}`);
+                    // Update floating ping counter
+                    if (data.latency > 0) {
+                        const pingEl = document.getElementById('ping-counter');
+                        if (pingEl) {
+                            pingEl.innerText = 'PING: ' + data.latency + 'ms';
+                            pingEl.style.color = data.latency < 50 ? '#00ff00' : data.latency < 100 ? '#ffff00' : '#ff0000';
+                        }
+                    }
+                }
+            });
+
+            // Update Scoreboard UI if open
+            if (document.getElementById('scoreboard').style.display !== 'none') {
+                if (typeof window.updateScoreboard === 'function') window.updateScoreboard();
+            }
         });
 
         socket.on('updateTeamColor', (data) => {
