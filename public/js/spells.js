@@ -47,7 +47,7 @@ function startCasting(spellId, type, key) {
 
     } else if (type === 'conversion') {
         const now = performance.now();
-        if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Ricarica...", "#aaa"); return; }
+        if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Recharging...", "#aaa"); return; }
     }
     if (castTime === 0) {
         if (type === 'attack') executeAttack(spellId); else if (type === 'conversion') executeConversion(spellId); return;
@@ -92,7 +92,7 @@ function stopCasting(key) {
             else if (castingState.type === 'conversion') executeConversion(castingState.currentSpell);
             else if (castingState.type === 'bow_shot') executeAttack('bow');
         } else {
-            addToLog("Lancio annullato", "#555");
+            addToLog("Cast cancelled", "#555");
             // CANCEL ANIMATION -> Return to Idle
             if (typeof switchMageAnimation !== 'undefined') {
                 switchMageAnimation("arms_armature|arms_armature|Combat_idle_loop");
@@ -160,7 +160,7 @@ function executeAttack(id) {
 
     let cost = (id === 1) ? SETTINGS.missileCost : (id === 2) ? SETTINGS.pushCost : (id === 3) ? SETTINGS.fireballCost : SETTINGS.beamCost;
     if (playerStats.mana < cost) { addToLog("Not enough Mana!", "error"); return; }
-    if (id === 4 && (now - lastSpikesTime < SETTINGS.spikesCooldown)) { addToLog("Spuntoni in ricarica...", "#aaa"); return; }
+    if (id === 4 && (now - lastSpikesTime < SETTINGS.spikesCooldown)) { addToLog("Spikes recharging...", "#aaa"); return; }
     playerStats.mana -= cost; lastAttackTime = now; isAttacking = true; attackTimer = 0;
 
     // TRIGGER MAGE ATTACK ANIMATION
@@ -176,7 +176,7 @@ function executeAttack(id) {
 function performConversion(type) {
     if (playerStats.isDead) return;
     const now = performance.now();
-    if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Ricarica...", "#aaa"); return; }
+    if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Recharging...", "#aaa"); return; }
 
     // Trigger powerup animation in melee mode
     if (weaponMode === 'melee' && knightAnimations.powerup) {
@@ -282,7 +282,7 @@ function applyConversionTick(type) {
 
 function performHeal() {
     if (playerStats.isDead) return; const now = performance.now();
-    if (now - lastHealTime < SETTINGS.healCooldown) { addToLog("Cura in cooldown", "#aaa"); return; }
+    if (now - lastHealTime < SETTINGS.healCooldown) { addToLog("Heal in cooldown", "#aaa"); return; }
     if (playerStats.mana < SETTINGS.healCost) { addToLog("Not enough Mana", "error"); return; }
     if (playerStats.hp >= playerStats.maxHp) return;
     playerStats.mana -= SETTINGS.healCost;
@@ -322,7 +322,7 @@ function performHeal() {
 function performWhirlwind() {
     if (playerStats.isDead || isBlocking) return;
     const now = performance.now();
-    if (now - lastWhirlwindTime < SETTINGS.whirlwindCooldown) { addToLog("Whirlwind in ricarica...", "#aaa"); return; }
+    if (now - lastWhirlwindTime < SETTINGS.whirlwindCooldown) { addToLog("Whirlwind recharging...", "#aaa"); return; }
     if (playerStats.stamina < SETTINGS.whirlwindCost) {
         if (now - (window.lastStaminaLogTime || 0) > 1000) {
             addToLog("Not enough Stamina!", "error");
@@ -351,7 +351,7 @@ function performWhirlwind() {
     setTimeout(() => { isWhirlwinding = false; }, whirlDurationMs);
 
     spawnParticles(playerMesh.position, 0xffffff, 40, 60, 0.6, false);
-    addToLog("TURBINE ATTIVATO!", "spell-cast");
+    addToLog("WHIRLWIND ACTIVATED!", "spell-cast");
     playSound('whirlwind');
 
     if (socket) socket.emit('playerAttack', { type: 'whirlwind', origin: playerMesh.position, direction: new THREE.Vector3(), duration: whirlDurationMs });
@@ -406,7 +406,7 @@ function fireHitscan() {
                 });
                 socket.emit('playerAttack', { type: 'spikes', origin: new THREE.Vector3(), direction: new THREE.Vector3(), targetId: hitId });
             }
-            addToLog("Spuntoni di Pietra colpiti!", "spell-cast"); playSound('hit');
+            addToLog("Stone Spikes hit!", "spell-cast"); playSound('hit');
         } else {
             spawnStoneSpikes(hitPoint, false);
             if (socket) socket.emit('playerAttack', { type: 'spikes', origin: hitPoint, direction: new THREE.Vector3() });
@@ -624,7 +624,7 @@ function updateProjectiles(delta) {
                     // Colpito il mostro IA
                     damageAIMonster(dmg);
                     createFloatingText(hitTarget.position.clone().add(new THREE.Vector3(0, 15, 0)), `-${dmg}`, "#ff9999");
-                    addToLog(`Colpito il mostro per ${dmg} danni!`, "dmg-dealt");
+                    addToLog(`Hit monster for ${dmg} damage!`, "dmg-dealt");
                 } else if (targetId) {
                     // Colpito un altro giocatore
                     let mitigatedDmg = dmg;
@@ -650,14 +650,14 @@ function updateProjectiles(delta) {
                             spawnExplosionVisual(hitPoint, 0xff4500, SETTINGS.fireballRadius);
                             socket.emit('playerPushed', { targetId: targetId, forceY: SETTINGS.fireballUpForce, damage: mitigatedDmg });
                             checkSplashDamage(hitPoint, SETTINGS.fireballRadius, 5, false);
-                            addToLog(`Colpito ${otherPlayers[targetId].username} con Palla di Fuoco!`, "dmg-dealt");
+                            addToLog(`Hit ${otherPlayers[targetId].username} with Fireball!`, "dmg-dealt");
                         } else if (p.userData.type === 5) {
                             // ARROW KNOCKBACK
                             const forceVec = p.userData.velocity.clone().normalize().multiplyScalar(SETTINGS.arrowKnockback);
                             // Aggiunge un po' di lift verticale per evitare attrito a terra
                             forceVec.y = 150;
                             socket.emit('playerPushed', { targetId: targetId, forceVec: forceVec, damage: mitigatedDmg });
-                            addToLog(`Colpito ${otherPlayers[targetId].username} con Freccia!`, "dmg-dealt");
+                            addToLog(`Hit ${otherPlayers[targetId].username} with Arrow!`, "dmg-dealt");
                         } else {
                             socket.emit('playerHit', {
                                 damage: mitigatedDmg,
@@ -751,7 +751,7 @@ function checkShockwaveAoE(origin) {
         velocity.add(forceVec);
         velocity.y += SETTINGS.pushUpForce;
         canJump = false; playerStats.isFalling = true; playerMesh.position.y += 0.5;
-        addToLog("Sbalzato dall'onda!", "spell-cast"); playSound('jump');
+        addToLog("Knocked back by wave!", "spell-cast"); playSound('jump');
     }
 
     Object.values(otherPlayers).forEach(op => {
@@ -877,7 +877,7 @@ function updateMeleeCombat(delta) {
                     const pushVec = new THREE.Vector3().subVectors(p.mesh.position, origin).normalize().multiplyScalar(SETTINGS.meleeKnockbackForce);
                     socket.emit('playerPushed', { targetId: id, forceVec: pushVec, damage: dmg });
                 }
-                addToLog(`Colpito ${p.username} con Spada! -${Math.round(dmg)}`, "dmg-dealt");
+                addToLog(`Hit ${p.username} with Sword! -${Math.round(dmg)}`, "dmg-dealt");
                 playSound('punch');
                 meleeState.hits.push(id);
             }
@@ -915,7 +915,7 @@ function updateMeleeCombat(delta) {
                     targetId: id,
                     hitPosition: p.mesh.position.clone()
                 });
-                addToLog(`Turbine su ${p.username}! -${Math.round(dmg)}`, "dmg-dealt");
+                addToLog(`Whirlwind on ${p.username}! -${Math.round(dmg)}`, "dmg-dealt");
 
                 whirlwindState.hits.push(id);
             }

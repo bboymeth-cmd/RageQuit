@@ -513,6 +513,11 @@ body {
     border-bottom-color: #e91e63;
 }
 
+#fullscreen-btn {
+    border-bottom-color: #9c27b0;
+    /* Purple */
+}
+
 #action-bar {
     position: absolute;
     bottom: 20px;
@@ -1704,5 +1709,12 @@ body {
 .log-entry.error {
     color: #ff0000 !important;
     text-shadow: 0 0 5px #ff0000;
+    font-weight: bold;
+}
+
+.log-entry.system-info {
+    color: #ffa500 !important;
+    /* Orange */
+    text-shadow: 0 0 5px #cc8400;
     font-weight: bold;
 }

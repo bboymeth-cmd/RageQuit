@@ -109,7 +109,7 @@ function initMultiplayer() {
                 return;
             }
 
-            addToLog(playerInfo.username + " è entrato!", "heal");
+            addToLog(playerInfo.username + " joined!", "system-info");
 
             if (!otherPlayers[playerInfo.id]) {
                 addOtherPlayer(playerInfo);
@@ -133,7 +133,7 @@ function initMultiplayer() {
                 }
             }
         });
-        socket.on('playerDisconnected', (id) => { if (otherPlayers[id]) addToLog(otherPlayers[id].username + " è uscito.", "kill"); removeOtherPlayer(id); });
+        socket.on('playerDisconnected', (id) => { if (otherPlayers[id]) addToLog(otherPlayers[id].username + " left.", "system-info"); removeOtherPlayer(id); });
 
         socket.on('updateTeamScores', (scores) => {
             if (scores) {
@@ -341,7 +341,7 @@ function initMultiplayer() {
                 playSound('block');
 
                 // Log nella chat
-                addToLog(`Attacco PARATO! (${Math.round(data.damage)} danni mitigati)`, "block-success");
+                addToLog(`Attack BLOCKED! (${Math.round(data.damage)} damage mitigated)`, "block-success");
 
             } else if (data.damage > 0) {
                 // FEEDBACK per DANNO NORMALE (non bloccato)
@@ -359,7 +359,7 @@ function initMultiplayer() {
                 playSound('hit');
 
                 // Log nella chat
-                addToLog(`Hai subito ${Math.round(data.damage)} danni!`, "damage-taken");
+                addToLog(`You took ${Math.round(data.damage)} damage!`, "damage-taken");
             }
 
             // NOTE: La morte viene gestita in updateHealth quando HP <= 0
@@ -596,7 +596,7 @@ function initMultiplayer() {
                 otherPlayers[data.id].mesh.userData.isDead = true;
                 updateEnemyHealthBar(otherPlayers[data.id], 0);
 
-                addToLog(otherPlayers[data.id].username + " eliminato!", "kill");
+                addToLog(otherPlayers[data.id].username + " eliminated!", "kill");
                 spawnParticles(otherPlayers[data.id].mesh.position, 0xff0000, 50, 50, 1.0, true);
 
                 // CLEANUP CASTING SPHERE ON DEATH

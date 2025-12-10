@@ -1064,7 +1064,7 @@ function respawnPlayer() {
     // Aggiorna l'UI
     updateUI();
 
-    addToLog('Sei rinato!', 'heal');
+    addToLog('You respawned!', 'system-info');
 
     // Riattiva il pointer lock
     setTimeout(() => {
@@ -1113,13 +1113,27 @@ function setupUIEvents() {
         // APPLICA PENALITÀ PER RESPAWN MANUALE (-1 al team)
         if (myTeam) {
             updateTeamScore(myTeam, -1);
-            addToLog("Respawn tattico! -1 Punto", "death");
+            addToLog("Tactical Respawn! -1 Point", "system-info");
             // Notifica gli altri per aggiornare il punteggio
             if (socket) socket.emit('remoteEffect', { type: 'score_penalty', team: myTeam });
         }
 
         respawnPlayer();
     });
+
+    // FULLSCREEN BUTTON
+    document.getElementById('fullscreen-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.target.blur();
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+                addToLog(`Error enabling fullscreen: ${err.message}`, "error"); // Red error for debug
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    });
+
     document.getElementById('keybinds-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
