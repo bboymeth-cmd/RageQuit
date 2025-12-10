@@ -43,11 +43,11 @@ function initMultiplayer() {
         socket = io({ reconnection: true, transports: ['websocket', 'polling'] });
         socket.on('connect', () => {
             console.log('TRACE: socket connected. socket.id=', socket.id, 'myId(before)=', myId);
-            document.getElementById('connection-status').innerText = "CONNESSO: " + myUsername;
+            document.getElementById('connection-status').innerText = "CONNECTED: " + myUsername;
             myId = socket.id;
             console.log('TRACE: myId set to', myId);
             socket.emit('joinGame', { username: myUsername, teamColor: myTeamColor, gameMode: myGameMode, team: myTeam });
-            socket.emit('requestPosition');
+            socket.emit('requestPosition'); // Chiedi spawn point immediato
 
             // Inizializza kill counter
             playerKills[myId] = myKills;
@@ -67,7 +67,7 @@ function initMultiplayer() {
                 pingEl.style.color = currentPing < 50 ? '#00ff00' : currentPing < 100 ? '#ffff00' : '#ff0000';
             }
         });
-        socket.on('disconnect', () => { document.getElementById('connection-status').innerText = "DISCONNESSO"; document.getElementById('connection-status').style.color = "red"; });
+        socket.on('disconnect', () => { document.getElementById('connection-status').innerText = "DISCONNECTED"; document.getElementById('connection-status').style.color = "red"; });
         socket.on('serverMsg', (msg) => { addToLog(msg, 'server-msg'); });
         socket.on('hitRejected', (data) => {
             // Il server ha respinto l'hit per posizione non valida

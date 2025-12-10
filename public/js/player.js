@@ -2237,7 +2237,7 @@ function updatePhysics(delta) {
 
     // FIX: Sprint Cooldown Hysteresis
     if (playerStats.stamina <= 0) {
-        if (!sprintCooldown) addToLog("Esausto!", "#ff0000");
+        if (!sprintCooldown) addToLog("Exhausted!", "error");
         sprintCooldown = true;
     } else if (playerStats.stamina > playerStats.maxStamina * 0.10) { // Reduced to 10%
         sprintCooldown = false;

@@ -30,11 +30,15 @@ function startCasting(spellId, type, key) {
     if (spellId === 4) castTime = 0.0;
 
     if (type === 'bow_shot') {
+        if (playerStats.stamina < SETTINGS.arrowCost) {
+            addToLog("Not enough Stamina!", "error");
+            return;
+        }
         castTime = SETTINGS.bowCastTime;
         playSound('bow_reload', playerMesh.position); // Local reload sound
     } else if (type === 'attack' && spellId !== 4) {
         let cost = (spellId === 1) ? SETTINGS.missileCost : (spellId === 2) ? SETTINGS.pushCost : (spellId === 3) ? SETTINGS.fireballCost : SETTINGS.beamCost;
-        if (playerStats.mana < cost) { addToLog("Mana insufficiente!", "#555"); return; }
+        if (playerStats.mana < cost) { addToLog("Not enough Mana!", "error"); return; }
 
         // TRIGGER MAGE START ANIMATION
         if (typeof switchMageAnimation !== 'undefined') {
@@ -155,7 +159,7 @@ function executeAttack(id) {
     }
 
     let cost = (id === 1) ? SETTINGS.missileCost : (id === 2) ? SETTINGS.pushCost : (id === 3) ? SETTINGS.fireballCost : SETTINGS.beamCost;
-    if (playerStats.mana < cost) { addToLog("Mana insufficiente!", "#555"); return; }
+    if (playerStats.mana < cost) { addToLog("Not enough Mana!", "error"); return; }
     if (id === 4 && (now - lastSpikesTime < SETTINGS.spikesCooldown)) { addToLog("Spuntoni in ricarica...", "#aaa"); return; }
     playerStats.mana -= cost; lastAttackTime = now; isAttacking = true; attackTimer = 0;
 
@@ -279,7 +283,7 @@ function applyConversionTick(type) {
 function performHeal() {
     if (playerStats.isDead) return; const now = performance.now();
     if (now - lastHealTime < SETTINGS.healCooldown) { addToLog("Cura in cooldown", "#aaa"); return; }
-    if (playerStats.mana < SETTINGS.healCost) { addToLog("Mana insufficiente", "#555"); return; }
+    if (playerStats.mana < SETTINGS.healCost) { addToLog("Not enough Mana", "error"); return; }
     if (playerStats.hp >= playerStats.maxHp) return;
     playerStats.mana -= SETTINGS.healCost;
     playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + SETTINGS.healAmount);
@@ -321,7 +325,7 @@ function performWhirlwind() {
     if (now - lastWhirlwindTime < SETTINGS.whirlwindCooldown) { addToLog("Whirlwind in ricarica...", "#aaa"); return; }
     if (playerStats.stamina < SETTINGS.whirlwindCost) {
         if (now - (window.lastStaminaLogTime || 0) > 1000) {
-            addToLog("Stamina insufficiente!", "#555");
+            addToLog("Not enough Stamina!", "error");
             window.lastStaminaLogTime = now;
         }
         return;
@@ -416,7 +420,7 @@ function spawnProjectile(type) {
     if (type === 5 && playerStats.stamina < SETTINGS.arrowCost) {
         const now = performance.now();
         if (now - (window.lastStaminaLogTime || 0) > 1000) {
-            addToLog("Stamina insufficiente!", "#555");
+            addToLog("Not enough Stamina!", "error");
             window.lastStaminaLogTime = now;
         }
         return;
@@ -810,7 +814,7 @@ function swingSword() {
     if (playerStats.stamina < SETTINGS.meleeStaminaCost) {
         const now = performance.now();
         if (now - (window.lastStaminaLogTime || 0) > 1000) {
-            addToLog("Stamina insufficiente!", "#555");
+            addToLog("Not enough Stamina!", "error");
             window.lastStaminaLogTime = now;
         }
         return;
