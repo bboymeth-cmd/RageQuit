@@ -327,15 +327,16 @@ io.on('connection', (socket) => {
             // Valida il tipo di danno e usa i valori server-side
             let actualDamage = dmgData.damage || 10; // Default fallback
 
-            // Clamp danno tra 1 e 100 per prevenire exploit
-            actualDamage = Math.max(1, Math.min(100, actualDamage));
+            // Clamp danno tra -100 (healing) e 100 per prevenire exploit, ma permettere cure
+            actualDamage = Math.max(-100, Math.min(100, actualDamage));
 
             console.log(`[SERVER] HP PRIMA: ${players[targetId].hp}, Danno: ${actualDamage}`);
 
             players[targetId].hp -= actualDamage;
-
-            // Clamp HP a 0 per evitare valori negativi
-            players[targetId].hp = Math.max(0, players[targetId].hp);
+            // Clamp HP a 0 e al massimo (maxHp)
+            // Assicuriamoci che maxHp sia definito
+            if (!players[targetId].maxHp) players[targetId].maxHp = 200; // Fallback default
+            players[targetId].hp = Math.max(0, Math.min(players[targetId].maxHp, players[targetId].hp));
 
             console.log(`[HIT VALIDATED] ${socket.id.substring(0, 8)} -> ${targetId.substring(0, 8)} | HP: ${players[targetId].hp + actualDamage} → ${players[targetId].hp} (dmg: ${actualDamage})`);
 

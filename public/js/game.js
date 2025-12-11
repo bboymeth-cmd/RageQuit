@@ -72,7 +72,192 @@ let currentPing = 0;
 let floatingTexts = [];
 const activeConversions = [];
 let castingState = { active: false, currentSpell: 0, timer: 0, maxTime: 0, ready: false, keyHeld: null };
-let lastAttackTime = 0; let lastHealTime = -10000; let lastConversionTime = 0; let lastWhirlwindTime = 0; let lastSpikesTime = 0;
+let lastAttackTime = 0; let lastHealTime = -10000; let lastHealOtherTime = -10000; let lastConversionTime = 0; let lastWhirlwindTime = 0; let lastSpikesTime = 0;
+
+// ... (existing code) ...
+
+function performHealOther() {
+    if (playerStats.isDead) return;
+    const now = performance.now();
+    if (now - lastHealOtherTime < SETTINGS.healOtherCooldown) { addToLog("Heal Other in cooldown", "#aaa"); return; }
+    if (playerStats.mana < SETTINGS.healOtherCost) { addToLog("Not enough Mana", "error"); return; }
+
+    playerStats.mana -= SETTINGS.healOtherCost;
+    lastHealOtherTime = now;
+
+    // Trigger animation locally (Use same as attack for now)
+    if (typeof switchMageAnimation !== 'undefined') {
+        switchMageAnimation("arms_armature|arms_armature|Magic_spell_attack");
+    }
+
+    fireHealBeam();
+
+    // Play sound and effect
+    playSound('heal');
+    spawnGlowEffect(0x00ff00);
+}
+
+function fireHealBeam() {
+    const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const opponentMeshes = Object.values(otherPlayers).map(p => p.mesh);
+    // Raycast against PLAYERS ONLY for healing
+    const intersects = raycaster.intersectObjects([...opponentMeshes], true);
+
+    if (intersects.length > 0) {
+        let hitPoint = intersects[0].point; let obj = intersects[0].object; let friendFound = null; let currentObj = obj;
+        while (currentObj) { if (Object.values(otherPlayers).find(p => p.mesh === currentObj)) { friendFound = currentObj; break; } currentObj = currentObj.parent; }
+
+        if (friendFound) {
+            // Visual feedback - Green Cylinder of Light on friend
+            spawnHealCylinder(friendFound);
+
+            const hitId = Object.keys(otherPlayers).find(key => otherPlayers[key].mesh === friendFound);
+
+            if (hitId && socket) {
+                // Check if target is dead
+                if (otherPlayers[hitId].mesh.userData.isDead || (otherPlayers[hitId].hp !== undefined && otherPlayers[hitId].hp <= 0)) {
+                    addToLog("Target is dead!", "error");
+                    return;
+                }
+
+                const healAmount = SETTINGS.healOtherAmount;
+                createFloatingText(friendFound.position.clone().add(new THREE.Vector3(0, 10, 0)), `+${healAmount}`, "#00ff00");
+
+                // SEND NEGATIVE DAMAGE TO HEAL
+                socket.emit('playerHit', {
+                    damage: -healAmount,
+                    targetId: hitId,
+                    hitPosition: otherPlayers[hitId].mesh.position.clone()
+                });
+
+                // Visual beam/attack packet for others to see
+                // Updated to 'heal' to trigger remote heal effect instead of spikes
+                // Added origin and endpoint for the beam
+                const originPos = playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0)); // Approx chest/hand height
+                const targetPos = friendFound.position.clone();
+
+                // Spawn local beam
+                if (typeof spawnHealBeam === 'function') spawnHealBeam(originPos, targetPos);
+
+                // Spawn local beam
+                spawnHealBeam(originPos, targetPos);
+
+                socket.emit('remoteEffect', {
+                    type: 'heal',
+                    id: socket.id,
+                    targetId: hitId,
+                    origin: originPos,
+                    target: targetPos
+                });
+            }
+            addToLog("Healed ally!", "heal"); playSound('hit');
+        } else {
+            addToLog("No target found", "#aaa");
+        }
+    } else {
+        addToLog("No target in range", "#aaa");
+    }
+    playSound('shoot_fire');
+}
+
+function spawnHealCylinder(targetMesh) {
+    if (!targetMesh) return;
+    // Hitbox approx: Height 18, Width/Depth ~4-5
+    // Cylinder Radius 5 to cover arms/armor comfortably
+    // Height 24 + Offset 5 -> Top at +17, Bottom at -7 (Touches ground but not too high)
+    const geometry = new THREE.CylinderGeometry(5, 5, 24, 32, 1, true); // Open cylinder
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    const cylinder = new THREE.Mesh(geometry, material);
+
+    // Position cylinder centered on player body
+    cylinder.position.copy(targetMesh.position);
+    cylinder.position.y += 5;
+
+    scene.add(cylinder);
+
+    // Light for extra glow
+    const light = new THREE.PointLight(0x00ff00, 2, 20);
+    light.position.copy(targetMesh.position).add(new THREE.Vector3(0, 9, 0));
+    scene.add(light);
+
+    // Animation: Build up then fade out
+    let duration = 0;
+    const animInterval = setInterval(() => {
+        duration += 16;
+
+        // FOLLOW TARGET: Update position every frame
+        if (targetMesh) {
+            cylinder.position.copy(targetMesh.position);
+            cylinder.position.y += 5;
+            light.position.copy(targetMesh.position).add(new THREE.Vector3(0, 9, 0));
+        }
+
+        // Pulse effect or simple fade
+        if (duration < 200) {
+            cylinder.scale.x = Math.min(1.2, cylinder.scale.x + 0.05);
+            cylinder.scale.z = Math.min(1.2, cylinder.scale.z + 0.05);
+        } else {
+            cylinder.material.opacity -= 0.02;
+            light.intensity -= 0.1;
+        }
+
+        if (duration > 1000 || cylinder.material.opacity <= 0) {
+            clearInterval(animInterval);
+            scene.remove(cylinder);
+            scene.remove(light);
+            geometry.dispose();
+            material.dispose();
+        }
+    }, 16);
+}
+
+function spawnHealBeam(start, end) {
+    if (!start || !end) return;
+
+    // Create cylinder from start to end
+    const distance = start.distanceTo(end);
+    const geometry = new THREE.CylinderGeometry(0.5, 0.5, distance, 8, 1, true);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x00ff00,
+        transparent: true,
+        opacity: 0.6,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+    const beam = new THREE.Mesh(geometry, material);
+
+    // Position at midpoint
+    const midpoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    beam.position.copy(midpoint);
+
+    // Orientation
+    const axis = new THREE.Vector3().subVectors(end, start).normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, axis);
+    beam.quaternion.copy(quaternion);
+
+    scene.add(beam);
+
+    // Fade out
+    let opacity = 0.6;
+    const fadeInterval = setInterval(() => {
+        opacity -= 0.05;
+        beam.material.opacity = opacity;
+        if (opacity <= 0) {
+            clearInterval(fadeInterval);
+            scene.remove(beam);
+            geometry.dispose();
+            material.dispose();
+        }
+    }, 50);
+}
 let keyToRebind = null; // Variabile per gestire il rebinding dei tasti 
 const savedSens = localStorage.getItem('ragequit_mouse_sensitivity');
 let mouseSensitivity = (savedSens && !isNaN(parseFloat(savedSens))) ? parseFloat(savedSens) : 1.0;
@@ -146,6 +331,7 @@ const SETTINGS = {
     staminaRegen: 3.0,
 
     healAmount: 20, healCost: 10, healCooldown: 10000,
+    healOtherAmount: 20, healOtherCost: 10, healOtherCooldown: 2000, healOtherCastTime: 400, // HEAL OTHER SETTINGS
     conversionCost: 5, conversionGain: 5, conversionCooldown: 1000,
     whirlwindDmg: 30, whirlwindRadius: 25, whirlwindCost: 10, whirlwindCooldown: 4000, // Raddoppiato da 2000 a 4000ms
     spikesCooldown: 3000,
@@ -339,6 +525,7 @@ const KEYBINDS = {
     WEAPON_SWITCH: 'KeyQ',
     BOW_EQUIP: 'KeyE',
     HEAL: 'KeyR',
+    HEAL_OTHER: 'KeyG', // NEW KEYBIND
     BLOCK: 'Mouse2', // Changed default to Right Mouse Button
     UNLOCK_MOUSE: 'AltLeft',
     MOVE_FORWARD: 'KeyW',
@@ -360,7 +547,8 @@ const KEY_NAMES = {
     SPELL_4: '⛰️ Stone Spikes',
     WEAPON_SWITCH: '⚔️ Melee/Whirlwind',
     BOW_EQUIP: '🏹 Bow',
-    HEAL: '💚 Heal',
+    HEAL: '<span style="color:#00ff00; font-weight:900;">✚</span> Heal Self',
+    HEAL_OTHER: '<span style="color:#ff3333; font-weight:900;">++</span> Heal Other', // NEW NAME
     BLOCK: '🛡️ Parry',
     UNLOCK_MOUSE: '🔓 Unlock Cursor',
     MOVE_FORWARD: '⬆️ Forward',
@@ -465,7 +653,7 @@ function initKeybindsUI() {
 
         const label = document.createElement('span');
         label.className = 'keybind-label';
-        label.textContent = KEY_NAMES[action] || action;
+        label.innerHTML = KEY_NAMES[action] || action;
 
         const keyBtn = document.createElement('button');
         keyBtn.className = 'keybind-btn';
@@ -568,6 +756,7 @@ function updateActionBarLabels() {
     set('lbl-spell3', 'SPELL_3');
     set('lbl-spell4', 'SPELL_4');
     set('lbl-heal', 'HEAL');
+    set('lbl-heal-other', 'HEAL_OTHER'); // NEW LABEL
     set('lbl-conv1', 'CONVERT_1');
     set('lbl-conv2', 'CONVERT_2');
     set('lbl-conv3', 'CONVERT_3');
@@ -1275,7 +1464,7 @@ function setupControls() {
 
                 // Also clear legacy helpers if any (failsafe)
                 hitboxHelpers.forEach(h => {
-                    if (h.parent) h.parent.remove(h.mesh);
+                    if (h.parent) h.parent.remove(h);
                 });
                 hitboxHelpers.length = 0;
             }
@@ -1315,6 +1504,11 @@ function setupControls() {
                 if (weaponMode !== 'bow') { weaponMode = 'bow'; toggleWeapon(true); }
                 break;
             case KEYBINDS.HEAL: performHeal(); break;
+            case KEYBINDS.HEAL: performHeal(); break;
+            case KEYBINDS.HEAL_OTHER:
+                if (weaponMode !== 'ranged') { weaponMode = 'ranged'; toggleWeapon(true); }
+                startCasting(5, 'attack', KEYBINDS.HEAL_OTHER);
+                break;
             case KEYBINDS.BLOCK: // Handle Keyboard Block
                 if (weaponMode === 'ranged' || weaponMode === 'bow') {
                     weaponMode = 'melee'; toggleWeapon(true);
@@ -1403,6 +1597,7 @@ function setupControls() {
         switch (e.code) {
             case KEYBINDS.MOVE_FORWARD: moveForward = false; break; case KEYBINDS.MOVE_LEFT: moveLeft = false; break; case KEYBINDS.MOVE_BACKWARD: moveBackward = false; break; case KEYBINDS.MOVE_RIGHT: moveRight = false; break; case KEYBINDS.SPRINT: isSprinting = false; break;
             case KEYBINDS.SPELL_1: stopCasting('Digit1'); break; case KEYBINDS.SPELL_2: stopCasting('Digit2'); break; case KEYBINDS.SPELL_3: stopCasting('Digit3'); break; case KEYBINDS.SPELL_4: stopCasting('Digit4'); break;
+            case KEYBINDS.HEAL_OTHER: stopCasting(KEYBINDS.HEAL_OTHER); break;
             case KEYBINDS.BLOCK: stopBlocking(); break;
         }
     });
@@ -1587,6 +1782,8 @@ function updateUI() {
     const spikesOverlay = document.getElementById('spikes-cd'); if (spikesOverlay) spikesOverlay.style.height = (spikesProgress * 100) + '%';
     const healProgress = Math.max(0, (SETTINGS.healCooldown - (now - lastHealTime)) / SETTINGS.healCooldown);
     const healOverlay = document.getElementById('heal-cd'); if (healOverlay) healOverlay.style.height = (healProgress * 100) + '%';
+    const healOtherProgress = Math.max(0, (SETTINGS.healOtherCooldown - (now - lastHealOtherTime)) / SETTINGS.healOtherCooldown);
+    const healOtherOverlay = document.getElementById('heal-other-cd'); if (healOtherOverlay) healOtherOverlay.style.height = (healOtherProgress * 100) + '%';
     const convProgress = Math.max(0, (SETTINGS.conversionCooldown - (now - lastConversionTime)) / SETTINGS.conversionCooldown);
     ['conv1-cd', 'conv2-cd', 'conv3-cd'].forEach(id => { const el = document.getElementById(id); if (el) el.style.height = (convProgress * 100) + '%'; });
 }

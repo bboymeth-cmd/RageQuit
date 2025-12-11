@@ -265,8 +265,17 @@ function initMultiplayer() {
         socket.on('remoteEffect', (data) => {
             if (otherPlayers[data.id]) {
                 let color = 0xffffff;
-                if (data.type === 'heal') color = 0x00ff00;
-                else if (data.type === 'mana') color = 0x0000ff;
+                if (data.type === 'heal') {
+                    color = 0x00ff00;
+                    color = 0x00ff00;
+                    if (typeof spawnHealCylinder === 'function') spawnHealCylinder(otherPlayers[data.id].mesh);
+                    // Spawn beam if coordinates provided
+                    if (data.origin && data.target && typeof spawnHealBeam === 'function') {
+                        const start = new THREE.Vector3(data.origin.x, data.origin.y, data.origin.z);
+                        const end = new THREE.Vector3(data.target.x, data.target.y, data.target.z);
+                        spawnHealBeam(start, end);
+                    }
+                } else if (data.type === 'mana') color = 0x0000ff;
                 else if (data.type === 'stamina') color = 0xff0000; // Red for Stamina->HP
                 else if (data.type === 'stamina_gain') color = 0xffff00; // Yellow for Mana->Stamina
 
@@ -360,6 +369,23 @@ function initMultiplayer() {
 
                 // Log nella chat
                 addToLog(`You took ${Math.round(data.damage)} damage!`, "damage-taken");
+            } else if (data.damage < 0) {
+                // FEEDBACK per CURA (danno negativo)
+                const healAmount = Math.abs(Math.round(data.damage));
+
+                // Flash schermo verde
+                flashScreen('green');
+
+                // Particelle verdi
+                spawnParticles(playerMesh.position, 0x00ff00, 10, 30, 0.6, false);
+
+                // Testo +20
+                createFloatingText(playerMesh.position.clone().add(new THREE.Vector3(0, 8, 0)), `+${healAmount}`, "#00ff00");
+
+                // Suono heal
+                playSound('heal');
+
+                addToLog(`You were healed for ${healAmount} HP!`, "heal");
             }
 
             // NOTE: La morte viene gestita in updateHealth quando HP <= 0

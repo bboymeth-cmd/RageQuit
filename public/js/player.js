@@ -2170,7 +2170,7 @@ function toggleWeapon(force) {
     document.getElementById('weapon-mode-text').innerText = modeText;
     document.getElementById('weapon-mode-text').style.color = isMelee ? "orange" : (isRanged ? "cyan" : "lightgreen");
 
-    const opacity = isMelee ? '0.4' : '1';
+    const opacity = '1'; // Always visible as requested
     document.querySelectorAll('.action-slot:not(.slot-q):not(.slot-e):not(.slot-r):not(#slot-5):not(#slot-6):not(#slot-7)').forEach(s => s.style.opacity = opacity);
 
     // Highlight Active Weapon Slot
@@ -2264,7 +2264,7 @@ function updatePhysics(delta) {
     // ENABLE SPRINT WHILE BLOCKING: Removed !isBlocking check
     if (isSprinting && (moveForward || moveBackward || moveLeft || moveRight) && !sprintCooldown) { speed *= SETTINGS.sprintMulti; }
 
-    velocity.x -= velocity.x * 5 * delta; velocity.z -= velocity.z * 5 * delta; velocity.y -= SETTINGS.gravity * delta;
+    velocity.x -= velocity.x * 5.5 * delta; velocity.z -= velocity.z * 5.5 * delta; velocity.y -= SETTINGS.gravity * delta;
 
     const rotY = playerMesh.rotation.y;
     let moving = false;
@@ -2338,35 +2338,64 @@ function updatePhysics(delta) {
     }
 
     playerMesh.position.addScaledVector(velocity, delta);
-    // PHYSICS: Raycast Ground Detection
+    // PHYSICS: Raycast Ground Detection (STABLE V1 + LEDGE SAFETY)
     // ---------------------------------------------------------
-    let targetPivotY = 6; // Default floor pivot level (Floor at 0, Pivot at 6)
-    const rayOrigin = playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0)); // Start from waist
-    const rayDown = new THREE.Vector3(0, -1, 0);
-    const gravityRaycaster = new THREE.Raycaster(rayOrigin, rayDown, 0, 20); // Check 20 units down
+    let targetPivotY = 6; // RESTORED DEFAULT FLOOR LEVEL (Fixes spawn fall)
+    const currentFeetY = playerMesh.position.y - 6;
+    const maxStepHeight = 3.0; // Max unit climbable
 
-    // Check collision with obstacles (bridges, ramps, boxes)
+    // 1. Primary Check: Central Ray (Most accurate for uneven terrain)
+    const rayOrigin = playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0));
+    const rayDown = new THREE.Vector3(0, -1, 0);
+    const gravityRaycaster = new THREE.Raycaster(rayOrigin, rayDown, 0, 20);
     const groundHits = gravityRaycaster.intersectObjects(obstacles, false);
 
-    // Find viable ground (filtered by Step Height)
     for (let i = 0; i < groundHits.length; i++) {
-        const hit = groundHits[i];
-        const surfaceY = hit.point.y;
-        const currentFeetY = playerMesh.position.y - 6;
-        const maxStepHeight = 3.0; // Max unit climbable in one frame/step
+        const splitHit = groundHits[i];
+        if (splitHit.point.y <= currentFeetY + maxStepHeight) {
+            targetPivotY = Math.max(targetPivotY, splitHit.point.y + 6);
+            break; // Found valid central ground
+        }
+    }
 
-        // If surface is reachable (not too high above feet) OR we are strictly falling from above
-        // If falling from above, currentFeetY > surfaceY, so condition holds.
-        // If walking under, surfaceY > currentFeetY + 3. -> False.
-        if (surfaceY <= currentFeetY + maxStepHeight) {
-            targetPivotY = Math.max(6, surfaceY + 6);
-            break; // Found highest valid ground
+    // 2. Ledge Safety Net (The "70% Rule")
+    // If center detected no ground (or ground too far down), check edges.
+    // If edges find ground, SNAP to that ground to prevent falling.
+    if (targetPivotY === 6 || targetPivotY < currentFeetY - 1.0) {
+        // We are about to fall. Check if our "toes" are still on the ledge.
+        const safetyOffsets = [
+            new THREE.Vector3(1.5, 0, 0),  // Right Edge
+            new THREE.Vector3(-1.5, 0, 0), // Left Edge
+            new THREE.Vector3(0, 0, 1.5),  // Back Edge
+            new THREE.Vector3(0, 0, -1.5)  // Front Edge
+        ];
+
+        let bestSafetyY = -999;
+
+        for (let offset of safetyOffsets) {
+            const safetyOrigin = rayOrigin.clone().add(offset);
+            const safetyCaster = new THREE.Raycaster(safetyOrigin, rayDown, 0, 20);
+            const safetyHits = safetyCaster.intersectObjects(obstacles, false);
+
+            for (let j = 0; j < safetyHits.length; j++) {
+                const sHit = safetyHits[j];
+                // Check if this edge point is on a valid walkable surface near our feet
+                if (sHit.point.y <= currentFeetY + maxStepHeight && sHit.point.y >= currentFeetY - 2.0) {
+                    // Allow slightly lower ground for safety catch
+                    bestSafetyY = Math.max(bestSafetyY, sHit.point.y + 6);
+                    break;
+                }
+            }
+        }
+
+        if (bestSafetyY !== -999) {
+            targetPivotY = bestSafetyY; // SAVED!
         }
     }
 
     // Apply Ground Logic
-    // If we are falling or standing near the detected ground
-    if (playerMesh.position.y <= targetPivotY + 0.5) { // Tolerance
+    // If we have a valid target Y (from center OR safety net)
+    if (targetPivotY !== -999 && playerMesh.position.y <= targetPivotY + 0.5) { // Tolerance
         if (velocity.y <= 0) {
             playerMesh.position.y = targetPivotY;
             velocity.y = 0;
@@ -2456,7 +2485,14 @@ function updatePhysics(delta) {
     }
 }
 
+// --- CAMERA UPDATE ---
 function updateCamera() {
+    // REQUEST: Ensure camera has no physical body and does not collide/block.
+    // VERIFIED: Camera is a pure Three.js Object3D with no physics collider attached.
+    // It is positioned via math relative to player, ignoring walls (clipping is intended to avoid getting stuck).
+
+    if (!playerMesh) return;
+
     const headPos = playerMesh.position.clone().add(new THREE.Vector3(0, 8.5, 0));
     if (weaponMode === 'ranged' || weaponMode === 'bow') {
         // FIX: Prima persona - posiziona camera nella testa, NON mostrare playerMesh

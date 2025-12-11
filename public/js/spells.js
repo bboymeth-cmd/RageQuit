@@ -27,7 +27,9 @@ function startCasting(spellId, type, key) {
     let castTime = 0.5;
     if (spellId === 1) castTime = 0.2;
     if (spellId === 3) castTime = 0.7; // Fireball increased to 0.7s
+    if (spellId === 3) castTime = 0.7; // Fireball increased to 0.7s
     if (spellId === 4) castTime = 0.0;
+    if (spellId === 5) castTime = SETTINGS.healOtherCastTime / 1000; // Convert to seconds
 
     if (type === 'bow_shot') {
         if (playerStats.stamina < SETTINGS.arrowCost) {
@@ -37,8 +39,17 @@ function startCasting(spellId, type, key) {
         castTime = SETTINGS.bowCastTime;
         playSound('bow_reload', playerMesh.position); // Local reload sound
     } else if (type === 'attack' && spellId !== 4) {
-        let cost = (spellId === 1) ? SETTINGS.missileCost : (spellId === 2) ? SETTINGS.pushCost : (spellId === 3) ? SETTINGS.fireballCost : SETTINGS.beamCost;
+        let cost = (spellId === 1) ? SETTINGS.missileCost : (spellId === 2) ? SETTINGS.pushCost : (spellId === 3) ? SETTINGS.fireballCost : (spellId === 5) ? SETTINGS.healOtherCost : SETTINGS.beamCost;
+
         if (playerStats.mana < cost) { addToLog("Not enough Mana!", "error"); return; }
+
+        if (spellId === 5) {
+            const now = performance.now();
+            if (now - lastHealOtherTime < SETTINGS.healOtherCooldown) {
+                addToLog("Heal Other on Cooldown!", "#ffa500");
+                return;
+            }
+        }
 
         // TRIGGER MAGE START ANIMATION
         if (typeof switchMageAnimation !== 'undefined') {
@@ -53,10 +64,12 @@ function startCasting(spellId, type, key) {
         if (type === 'attack') executeAttack(spellId); else if (type === 'conversion') executeConversion(spellId); return;
     }
     castingState.active = true; castingState.timer = 0; castingState.maxTime = castTime; castingState.currentSpell = spellId; castingState.type = type; castingState.ready = false; castingState.keyHeld = key;
-    document.getElementById('cast-bar-container').style.display = 'block'; document.getElementById('cast-text').innerText = "CARICAMENTO..."; document.getElementById('cast-bar-fill').className = '';
+    document.getElementById('cast-bar-container').style.display = 'block'; document.getElementById('cast-text').innerText = "CARICAMENTO...";
+    const bar = document.getElementById('cast-bar-fill');
+    bar.className = ''; bar.style.width = '0%';
 
-    // LOCAL SPELL SOUND (Only for Spells 1, 2, 3)
-    if (type === 'attack' && (spellId === 1 || spellId === 2 || spellId === 3)) {
+    // LOCAL SPELL SOUND (Only for Spells 1, 2, 3, 5)
+    if (type === 'attack' && (spellId === 1 || spellId === 2 || spellId === 3 || spellId === 5)) {
         if (typeof playCastingSound === 'function') {
             // Create a temporary object for local player to hold the sound reference
             // We store it in castingState so we can stop it later
@@ -155,6 +168,28 @@ function executeAttack(id) {
 
         if (socket) socket.emit('playerAttack', { type: 5, origin: spawnPos, direction: camDir });
         playSound('bow_shot'); // Use loaded MP3
+        return;
+    }
+
+
+
+    // HEAL OTHER (ID 5)
+    if (id === 5) {
+        if (playerStats.mana < SETTINGS.healOtherCost) { addToLog("Not enough Mana!", "error"); return; }
+        // Check cooldown
+        if (now - lastHealOtherTime < SETTINGS.healOtherCooldown) { addToLog("Heal Other in cooldown", "#aaa"); return; }
+
+        playerStats.mana -= SETTINGS.healOtherCost;
+        lastHealOtherTime = now;
+
+        // Trigger animation
+        if (typeof switchMageAnimation !== 'undefined') {
+            switchMageAnimation("arms_armature|arms_armature|Magic_spell_attack");
+        }
+
+        if (typeof fireHealBeam === 'function') fireHealBeam();
+        spawnGlowEffect(0x00ff00);
+        playSound('heal'); // Play sound here or in fireHealBeam
         return;
     }
 
@@ -302,7 +337,7 @@ function performHeal() {
         socket.emit('playerHealed', { amount: SETTINGS.healAmount });
         socket.emit('remoteEffect', { type: 'heal' });
     }
-    lastHealTime = now; addToLog(`Curato di ${SETTINGS.healAmount} HP`, "heal");
+    lastHealTime = now; addToLog(`Healed ${SETTINGS.healAmount} HP`, "heal");
 
     // FIX: Posiziona testo floating davanti alla camera per visibilità in prima e terza persona
     let textPosition;
