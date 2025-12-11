@@ -501,6 +501,10 @@ function loadKnightModel(callback) {
         }
 
         isKnightLoaded = true;
+        // FIX: Force weapon/model visibility update immediately after load
+        // This solves the "invisible model on join" issue
+        if (typeof toggleWeapon === 'function') setTimeout(() => toggleWeapon(true), 50);
+
         if (callback) callback();
 
     }, undefined, (error) => {
