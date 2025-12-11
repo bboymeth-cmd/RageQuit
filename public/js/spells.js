@@ -210,6 +210,7 @@ function executeAttack(id) {
 
 function performConversion(type) {
     if (playerStats.isDead) return;
+    if (castingState.active) { addToLog("Busy casting!", "error"); return; }
     const now = performance.now();
     if (now - lastConversionTime < SETTINGS.conversionCooldown) { addToLog("Recharging...", "#aaa"); return; }
 
@@ -316,7 +317,9 @@ function applyConversionTick(type) {
 }
 
 function performHeal() {
-    if (playerStats.isDead) return; const now = performance.now();
+    if (playerStats.isDead) return;
+    if (castingState.active) { addToLog("Busy casting!", "error"); return; }
+    const now = performance.now();
     if (now - lastHealTime < SETTINGS.healCooldown) { addToLog("Heal in cooldown", "#aaa"); return; }
     if (playerStats.mana < SETTINGS.healCost) { addToLog("Not enough Mana", "error"); return; }
     if (playerStats.hp >= playerStats.maxHp) return;
@@ -977,6 +980,7 @@ function startCastingEffect(playerObj, spellId) {
     if (spellId === 1) color = 0x00ffff; // Cyan
     else if (spellId === 2) color = 0xffffff; // White
     else if (spellId === 3) color = 0xff4500; // OrangeHelper (OrangeRed)
+    else if (spellId === 5) color = 0x00ff00; // Green (Heal Other)
     else return; // Do not show sphere for Bow or other types
 
     // PLAY SOUND

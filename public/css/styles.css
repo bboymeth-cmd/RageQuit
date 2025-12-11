@@ -1753,3 +1753,51 @@ body {
     text-shadow: 0 0 5px #cc8400;
     font-weight: bold;
 }
+
+/* SPELL TOOLTIP */
+.spell-tooltip {
+    position: absolute;
+    background: rgba(10, 10, 10, 0.95);
+    border: 1px solid #444;
+    padding: 12px;
+    color: #fff;
+    pointer-events: none;
+    /* Allows clicking through */
+    z-index: 2000;
+    border-radius: 6px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
+    display: none;
+    min-width: 150px;
+    max-width: 250px;
+    text-align: left;
+    white-space: pre-line;
+    /* Allows newlines */
+}
+
+.spell-tooltip .title {
+    font-weight: bold;
+    color: #ffcc00;
+    /* Gold title */
+    font-size: 16px;
+    margin-bottom: 5px;
+    display: block;
+    text-transform: uppercase;
+}
+
+.spell-tooltip .stat {
+    font-size: 13px;
+    color: #ccc;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.spell-tooltip .desc {
+    margin-top: 8px;
+    font-size: 13px;
+    font-style: italic;
+    color: #aaa;
+    /* border-top removed */
+    padding-top: 5px;
+}

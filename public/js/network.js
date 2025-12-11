@@ -445,7 +445,7 @@ function initMultiplayer() {
                 p.mesh.userData.castingType = data.type;
 
                 // Play bow reload sound
-                if (data.type === 'bow' || data.type === 5) {
+                if (data.type === 'bow') {
                     playSound('bow_reload', p.mesh.position);
                 }
 

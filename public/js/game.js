@@ -331,7 +331,7 @@ const SETTINGS = {
     staminaRegen: 3.0,
 
     healAmount: 20, healCost: 10, healCooldown: 10000,
-    healOtherAmount: 20, healOtherCost: 10, healOtherCooldown: 2000, healOtherCastTime: 400, // HEAL OTHER SETTINGS
+    healOtherAmount: 20, healOtherCost: 10, healOtherCooldown: 1500, healOtherCastTime: 400, // HEAL OTHER SETTINGS
     conversionCost: 5, conversionGain: 5, conversionCooldown: 1000,
     whirlwindDmg: 30, whirlwindRadius: 25, whirlwindCost: 10, whirlwindCooldown: 4000, // Raddoppiato da 2000 a 4000ms
     spikesCooldown: 3000,
@@ -1146,8 +1146,8 @@ window.performConversion = performConversion;
 
 
 
-function updateActionBarUI() { document.querySelectorAll('.action-slot').forEach(el => el.classList.remove('active')); if (weaponMode === 'ranged') document.getElementById(`slot-${currentSpell}`).classList.add('active'); else if (weaponMode === 'melee') document.getElementById('slot-q').classList.add('active'); else if (weaponMode === 'bow') document.getElementById('slot-e').classList.add('active'); }
-function updateStaffColor(id) { if (!staffContainer || !staffContainer.userData.gem) return; const colors = [0xffffff, 0x00ffff, 0xffffff, 0xff6600, 0xaa00ff]; staffContainer.userData.gem.material.color.setHex(colors[id]); }
+function updateActionBarUI() { document.querySelectorAll('.action-slot').forEach(el => el.classList.remove('active')); if (weaponMode === 'ranged') { if (currentSpell === 5) document.querySelector('.slot-g').classList.add('active'); else document.getElementById(`slot-${currentSpell}`).classList.add('active'); } else if (weaponMode === 'melee') document.getElementById('slot-q').classList.add('active'); else if (weaponMode === 'bow') document.getElementById('slot-e').classList.add('active'); }
+function updateStaffColor(id) { if (!staffContainer || !staffContainer.userData.gem) return; const colors = [0xffffff, 0x00ffff, 0xffffff, 0xff6600, 0xaa00ff, 0x00ff00]; staffContainer.userData.gem.material.color.setHex(colors[id] || 0xffffff); }
 function getStaffTip() { const vec = new THREE.Vector3(); if (staffContainer?.userData.gem) staffContainer.userData.gem.getWorldPosition(vec); else vec.copy(playerMesh.position).add(new THREE.Vector3(0, 5, 0)); return vec; }
 
 
@@ -1379,6 +1379,8 @@ function setupUIEvents() {
             }, 100);
         }
     });
+    // Initialize Tooltips
+    if (typeof initTooltips === 'function') initTooltips();
 }
 function setupControls() {
     document.addEventListener('pointerlockchange', () => {
@@ -1506,7 +1508,9 @@ function setupControls() {
             case KEYBINDS.HEAL: performHeal(); break;
             case KEYBINDS.HEAL: performHeal(); break;
             case KEYBINDS.HEAL_OTHER:
-                if (weaponMode !== 'ranged') { weaponMode = 'ranged'; toggleWeapon(true); }
+                // Select Heal Other (Spell ID 5)
+                selectSpell(5);
+                // Also cast immediately (Quick Cast like keys 1-4)
                 startCasting(5, 'attack', KEYBINDS.HEAL_OTHER);
                 break;
             case KEYBINDS.BLOCK: // Handle Keyboard Block
@@ -2058,3 +2062,59 @@ function updateScoreboard() {
 
 // Ensure updateScoreboard is available globally
 window.updateScoreboard = updateScoreboard;
+
+// === SPELL TOOLTIPS ===
+const SPELL_TOOLTIPS = {
+    'slot-1': { title: 'Magic Dart', cost: '5 Mana', damage: '10 Dmg', desc: 'Fast, low cost projectile.\nIdeal for harass.' },
+    'slot-2': { title: 'Air Wave', cost: '15 Mana', damage: '10 Dmg', desc: 'Knockback area.\nShoot DOWN to Rocket Jump!' },
+    'slot-3': { title: 'Fireball', cost: '20 Mana', damage: '30 Dmg', desc: 'Explosive AoE.\nKnocks enemies UP into the air.' },
+    'slot-4': { title: 'Stone Spikes', cost: '10 Mana', damage: '25 Dmg', desc: 'Instant Hitscan Trap.\nShort range ground attack.' },
+    'slot-q': {
+        title: 'Melee / Whirlwind',
+        cost: '5 / 10 Stamina',
+        damage: '15 / 30 Dmg',
+        desc: 'Melee: Basic Slash (15 DMG).\nWhirlwind: Double-Tap (30 DMG Area).\n"Spin to win!"'
+    },
+    'slot-e': { title: 'Bow', cost: '10 Stamina', damage: '15 Dmg', desc: 'Ranged shot.\nSlightly knocks enemies back.' },
+    'slot-r': { title: 'Heal Self', cost: '10 Mana', damage: '+' + SETTINGS.healAmount + ' HP', desc: 'Restore health.\nStay alive.' },
+    'slot-g': { title: 'Heal Other', cost: '10 Mana', damage: '+' + SETTINGS.healOtherAmount + ' HP', desc: 'Heal ally.\nBe a hero.' },
+    'slot-5': { title: 'Stamina to Health', cost: '5 Stamina', damage: '+5 HP/sec', desc: 'Convert Stamina into Health over time.' },
+    'slot-6': { title: 'Blood to Mana', cost: '5 HP', damage: '+5 Mana/sec', desc: 'Sacrifice Health for Mana over time.' },
+    'slot-7': { title: 'Mana to Stamina', cost: '5 Mana', damage: '+5 Stamina/sec', desc: 'Convert Mana into Stamina over time.' }
+};
+
+function initTooltips() {
+    const tooltip = document.getElementById('spell-tooltip');
+    if (!tooltip) return;
+
+    document.querySelectorAll('.action-slot').forEach(slot => {
+        slot.addEventListener('mouseenter', (e) => {
+            // Only show if mouse IS UNLOCKED (pointerLockElement is null)
+            if (document.pointerLockElement === null) {
+                const id = slot.id; // e.g. slot-1, slot-r
+                const data = SPELL_TOOLTIPS[id];
+                if (data) {
+                    tooltip.innerHTML = `<span class="title">${data.title}</span><span class="stat">Cost: ${data.cost}</span><span class="stat">Effect: ${data.damage}</span><span class="desc">${data.desc}</span>`;
+                    tooltip.style.display = 'block';
+                    // Initial pos (ABOVE CURSOR)
+                    tooltip.style.left = (e.clientX + 10) + 'px';
+                    tooltip.style.top = 'auto';
+                    tooltip.style.bottom = (window.innerHeight - e.clientY + 15) + 'px';
+                }
+            }
+        });
+
+        slot.addEventListener('mousemove', (e) => {
+            if (tooltip.style.display === 'block') {
+                tooltip.style.left = (e.clientX + 10) + 'px';
+                tooltip.style.top = 'auto';
+                tooltip.style.bottom = (window.innerHeight - e.clientY + 15) + 'px';
+            }
+        });
+
+        slot.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
+    });
+}
+window.initTooltips = initTooltips;
