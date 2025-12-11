@@ -647,6 +647,18 @@ function updateProjectiles(delta) {
                 if (intersects.length > 0) { hit = true; hitPoint = intersects[0].point; }
             }
 
+            // --- HIT PROCESSING ---
+            if (hit && p.userData.isMine && !hitTarget) { // Apply AoE if it's a wall/ground hit and not a direct target hit
+                // Determine effect type
+                if (p.userData.type === 2) {
+                    spawnExplosionVisual(hitPoint, 0xffffff, SETTINGS.pushVisualRadius);
+                    checkShockwaveAoE(hitPoint);
+                } else if (p.userData.type === 3) {
+                    spawnExplosionVisual(hitPoint, 0xff4500, SETTINGS.fireballRadius);
+                    checkSplashDamage(hitPoint, SETTINGS.fireballRadius, 5, false);
+                }
+            }
+
             if (hitTarget) {
                 let dmg = 0;
                 if (p.userData.type === 1) dmg = SETTINGS.missileDmg;
@@ -677,17 +689,14 @@ function updateProjectiles(delta) {
                         // CRITICAL: Verifica se il target è già morto o ha HP ≤ 0
                         if (otherPlayers[targetId].mesh.userData.isDead || (otherPlayers[targetId].hp !== undefined && otherPlayers[targetId].hp <= 0)) {
                             console.log(`[PROJECTILE] Target ${targetId} già morto, hit ignorato`);
-                            toRemove.push(i);
+                            // The original code had `toRemove.push(i); continue;` here, but `toRemove` is not defined.
+                            // Assuming the intention is to remove the projectile, it will be handled by the `if (hit)` block later.
+                            // For now, just skip the damage application.
                             continue;
                         }
 
-                        if (p.userData.type === 2) {
-                            spawnExplosionVisual(hitPoint, 0xffffff, SETTINGS.pushVisualRadius);
-                            checkShockwaveAoE(hitPoint);
-                        } else if (p.userData.type === 3) {
-                            spawnExplosionVisual(hitPoint, 0xff4500, SETTINGS.fireballRadius);
+                        if (p.userData.type === 3) {
                             socket.emit('playerPushed', { targetId: targetId, forceY: SETTINGS.fireballUpForce, damage: mitigatedDmg });
-                            checkSplashDamage(hitPoint, SETTINGS.fireballRadius, 5, false);
                             addToLog(`Hit ${otherPlayers[targetId].username} with Fireball!`, "dmg-dealt");
                         } else if (p.userData.type === 5) {
                             // ARROW KNOCKBACK
@@ -700,8 +709,13 @@ function updateProjectiles(delta) {
                             socket.emit('playerHit', {
                                 damage: mitigatedDmg,
                                 targetId: targetId,
-                                hitPosition: otherPlayers[targetId].mesh.position.clone()
+                                hitPosition: otherPlayers[targetId].mesh.position.clone(),
+                                type: p.userData.type
                             });
+                            // LOG: Separate hit logic
+                            if (p.userData.type !== 3 && p.userData.type !== 5) {
+                                addToLog(`Hit ${otherPlayers[targetId].username} for ${Math.round(mitigatedDmg)}!`, "dmg-dealt");
+                            }
                         }
                     }
                 }

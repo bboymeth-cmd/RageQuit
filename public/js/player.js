@@ -2337,6 +2337,43 @@ function updatePhysics(delta) {
         }
     }
 
+    // FIX: Continuous Collision Detection (CCD) for Falling Tunneling
+    // Check collision BEFORE moving if falling fast
+    if (velocity.y < -100) { // arbitrary threshold for "fast fall"
+        const projectedMoveY = velocity.y * delta;
+        const probeOrigin = playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0)); // Start from chest/head
+        const probeDown = new THREE.Vector3(0, -1, 0);
+        // Cast strictly downwards for the distance we WOULD travel + buffer
+        const probeDist = Math.abs(projectedMoveY) + 6.0; // Distance + Height offset relative to feet
+
+        const ccdRaycaster = new THREE.Raycaster(probeOrigin, probeDown, 0, probeDist);
+        const ccdHits = ccdRaycaster.intersectObjects(obstacles, false);
+
+        if (ccdHits.length > 0) {
+            const hit = ccdHits[0];
+            // If the hit point is somewhere between current feet and where feet WOULD be
+            // Prevent tunneling
+            const currentFeetY = playerMesh.position.y - 6;
+            const targetFeetY = currentFeetY + projectedMoveY;
+
+            if (hit.point.y >= targetFeetY && hit.point.y <= currentFeetY + 5.0) {
+                // Detected tunnel collision!
+                // Snap to floor
+                velocity.y = 0;
+                playerMesh.position.y = hit.point.y + 6;
+                playerStats.isFalling = false;
+                // Zero out vertical component of the move vector to prevent double application
+                // But we still want X/Z movement.
+                // Since we manually set Y, we should handle X/Z separately below?
+                // Actually if we set velocity.y = 0 here, the subsequent addScaledVector will just add 0 Y.
+                // PERFECT.
+                // Wait, addScaledVector consumes `velocity` which we just modified to 0 Y.
+                // But `position.y` was manually set. So `position.y + 0 * delta` = `position.y`.
+                // Correct.
+            }
+        }
+    }
+
     playerMesh.position.addScaledVector(velocity, delta);
     // PHYSICS: Raycast Ground Detection (STABLE V1 + LEDGE SAFETY)
     // ---------------------------------------------------------
