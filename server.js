@@ -9,7 +9,7 @@ const io = new Server(server, {
     pingInterval: 25000
 });
 
-const TICK_RATE = 20;
+const TICK_RATE = 60;
 const TICK_INTERVAL = 1000 / TICK_RATE;
 const path = require('path');
 
