@@ -1274,24 +1274,29 @@ function getSpawnPosition() {
 
     if (team) {
         // Spawn nelle zone colorate per le squadre
+        // UPDATE: Tutti respawnano alle coordinate richieste (-7773, 670, -2922)
+        const targetX = -7773;
+        const targetY = 670;
+        const targetZ = -2922;
+
         const teamSpawns = {
-            red: { x: -300, z: -300 },
-            black: { x: 300, z: -300 },
-            green: { x: -300, z: 300 },
-            purple: { x: 300, z: 300 }
+            red: { x: targetX, z: targetZ },
+            black: { x: targetX, z: targetZ },
+            green: { x: targetX, z: targetZ },
+            purple: { x: targetX, z: targetZ }
         };
 
         const spawn = teamSpawns[team];
         if (spawn) {
-            // Aggiungi variazione casuale entro 30 unità dal centro
-            const offsetX = (Math.random() - 0.5) * 60;
-            const offsetZ = (Math.random() - 0.5) * 60;
-            return new THREE.Vector3(spawn.x + offsetX, 6, spawn.z + offsetZ);
+            // Aggiungi variazione casuale entro 60 unità per evitare sovrapposizioni
+            const offsetX = (Math.random() - 0.5) * 120;
+            const offsetZ = (Math.random() - 0.5) * 120;
+            return new THREE.Vector3(spawn.x + offsetX, targetY, spawn.z + offsetZ);
         }
     }
 
-    // Fallback: spawn al centro se squadra non definita
-    return new THREE.Vector3(0, 6, 0);
+    // Fallback: spawn alle coordinate richieste se squadra non definita
+    return new THREE.Vector3(-7773, 670, -2922);
 }
 
 function setupUIEvents() {
@@ -1808,6 +1813,14 @@ function animate() {
         document.getElementById('fps-counter').innerText = 'FPS: ' + currentFPS;
     }
 
+    // Update Coordinates Display (Requested)
+    if (playerMesh) {
+        const p = playerMesh.position;
+        const coordText = `X:${Math.round(p.x)} Y:${Math.round(p.y)} Z:${Math.round(p.z)}`;
+        const coordEl = document.getElementById('coord-display');
+        if (coordEl) coordEl.innerText = coordText;
+    }
+
     // Spectator camera
     if (isSpectating && spectateTarget && spectateTarget.mesh) {
         camera.position.copy(spectateTarget.mesh.position).add(new THREE.Vector3(0, 10, 15));
@@ -1822,10 +1835,20 @@ function animate() {
         }
 
         try {
-            updatePhysics(delta);
             updateCamera(); // Moved here to fix lag
             sendPositionUpdate(); // Invia posizione ad alta frequenza
             updateProjectiles(delta); updateCasting(delta);
+
+            // FIX: Physics Sub-stepping to prevent falling through floor on lag/tab switch
+            // Instead of one big updatePhysics(0.1), do multiple small steps
+            const FIXED_STEP = 0.016; // 60 Hz physics
+            let timeRemaining = delta;
+            while (timeRemaining > 0) {
+                const step = Math.min(timeRemaining, FIXED_STEP);
+                updatePhysics(step);
+                timeRemaining -= step;
+            }
+
             if (typeof updateMeleeCombat === 'function') updateMeleeCombat(delta);
             updateParticles(delta); // Aggiorna particelle (sangue, gibs, ecc)
             updateConversions(delta); updateFloatingTexts(delta);
