@@ -1925,6 +1925,10 @@ function animate() {
     if (delta > 0.1) delta = 0.1; // Max 0.1s (10 FPS)
     prevTime = time;
 
+    // LOGIC ACCUMULATOR for 60Hz Cap
+    if (typeof window.logicAccumulator === 'undefined') window.logicAccumulator = 0;
+    let logicAccumulator = window.logicAccumulator;
+
     // FPS Counter
     fpsFrames++;
     if (time - fpsLastTime >= 1000) {
@@ -1960,28 +1964,44 @@ function animate() {
         }
 
         try {
-            updateCamera(); // Moved here to fix lag
-            sendPositionUpdate(); // Invia posizione ad alta frequenza
-            updateProjectiles(delta); updateCasting(delta);
+            updateCamera(); // Camera follows player every frame for smoothness
+            sendPositionUpdate(); // Network throttles itself internally
 
-            // FIX: Physics Sub-stepping to prevent falling through floor on lag/tab switch
-            // Instead of one big updatePhysics(0.1), do multiple small steps
-            const FIXED_STEP = 0.033; // 30 Hz physics
-            let timeRemaining = delta;
-            while (timeRemaining > 0) {
-                const step = Math.min(timeRemaining, FIXED_STEP);
-                updatePhysics(step);
-                timeRemaining -= step;
+            // LOGIC CAP: Accumulate delta for Logic Updates (60Hz)
+            // This prevents "High Hz Jitter" where 240Hz monitors run logic 4x faster/smaller deltas
+            const LOGIC_TIMESTEP = 0.016; // 60 Hz
+            logicAccumulator += delta;
+
+            // Limit accumulator to prevent spiral of death on lag spikes
+            if (logicAccumulator > 0.1) logicAccumulator = 0.1;
+
+            while (logicAccumulator >= LOGIC_TIMESTEP) {
+                updateProjectiles(LOGIC_TIMESTEP);
+                updateCasting(LOGIC_TIMESTEP);
+
+                // PHYSICS SUB-STEPPING (30Hz inside 60Hz Logic)
+                // Existing sub-stepping is fine, we just pass the fixed logic step
+                // updatePhysics(LOGIC_TIMESTEP) -> internally handles its own sub-steps if needed
+                // But current physics code does sub-stepping. Let's simplify and call updatePhysics directly with fixed step (Logic Step)
+                updatePhysics(LOGIC_TIMESTEP);
+
+                if (typeof updateMeleeCombat === 'function') updateMeleeCombat(LOGIC_TIMESTEP);
+                updateParticles(LOGIC_TIMESTEP);
+                updateConversions(LOGIC_TIMESTEP);
+                updateFloatingTexts(LOGIC_TIMESTEP);
+                updateSwordAnimation(LOGIC_TIMESTEP);
+
+                // Aggiorna il mostro IA se in modalità PvE
+                if (isPvEMode && aiMonster) updateAIMonster(LOGIC_TIMESTEP);
+
+                logicAccumulator -= LOGIC_TIMESTEP;
             }
 
-            if (typeof updateMeleeCombat === 'function') updateMeleeCombat(delta);
-            updateParticles(delta); // Aggiorna particelle (sangue, gibs, ecc)
-            updateConversions(delta); updateFloatingTexts(delta);
-            updateSwordAnimation(delta);
-
-            // Aggiorna il mostro IA se in modalità PvE
-            if (isPvEMode && aiMonster) {
-                updateAIMonster(delta);
+            // Update animations for other players (Keep smooth, use raw delta or interpolated?)
+            // Animations usually look best with real time, but mixing is tricky.
+            // Let's keep other players on delta for interpolation smoothness
+            if (typeof updateOtherPlayersAnimations === 'function') {
+                updateOtherPlayersAnimations(delta);
             }
 
             // Update animations for other players (Knight model)
@@ -2093,6 +2113,9 @@ function animate() {
         window.profLogic = 0;
         window.profRender = 0;
     }
+
+    // Save accumulator state for next frame
+    window.logicAccumulator = logicAccumulator;
 }
 
 // === SHADER WARMUP REMOVED BY USER REQUEST ===
