@@ -2049,7 +2049,8 @@ function animate() {
     }
 
     if (frameCount % 2 === 0) updateUI(); // Aggiorna UI ogni 2 frame per performance
-    renderer.render(scene, camera);
+    // FIXED: REMOVED DUPLICATE renderer.render() call that was causing double GPU load!
+
     // Use Composer if available, otherwise fallback to renderer
     // --- PROFILER MEASURE LOGIC ---
     const t1 = performance.now();
