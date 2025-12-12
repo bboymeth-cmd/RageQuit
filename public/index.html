@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RageQuit: Arena Modulare</title>
+    <link rel="stylesheet" href="./css/styles.css">
+
+</head>
+
+<body>
+    <div id="screen-flash"></div>
+    <div id="floating-text-container"></div>
+    <div id="connection-status">DISCONNESSO</div>
+    <div id="coord-display"
+        style="position:fixed;top:30px;right:10px;color:#00ffff;font-size:12px;font-family:monospace;z-index:1000;text-align:right;">
+        XYZ: 0, 0, 0
+    </div>
+    <div id="fps-counter"
+        style="position:fixed;top:50px;right:10px;color:#00ff00;font-size:14px;font-family:monospace;z-index:1000;text-align:right;">
+        FPS: 0</div>
+    <div id="ping-counter"
+        style="position:fixed;top:70px;right:10px;color:#ffff00;font-size:14px;font-family:monospace;z-index:1000;text-align:right;">
+        PING: 0ms</div>
+
+    <!-- Kill Counter -->
+    <div id="kill-counter-container">
+        <div id="kill-counter-team" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+
+    <div class="top-controls" style="align-items: flex-start;">
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+            <button id="reset-btn" class="btn" style="width: 100%;">RESPAWN</button>
+            <button id="fullscreen-btn" class="btn" style="width: 100%;">FULLSCREEN</button>
+            <button id="menu-btn" class="btn" style="border-bottom: 2px solid #e91e63; width: 100%;">MENU</button>
+        </div>
+        <button id="keybinds-btn" class="btn" style="height: fit-content;">KEY BINDINGS</button>
+        <div
+            style="display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 8px; border-bottom: 3px solid #44aaff; backdrop-filter: blur(10px); height: fit-content;">
+            <div id="audio-btn" style="cursor: pointer; font-size: 16px; user-select: none; line-height: 1;">🔊</div>
+            <input type="range" id="volume-slider" min="0" max="100" value="50"
+                style="width: 60px; height: 4px; cursor: pointer;">
+        </div>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="cast-bar-container">
+        <div id="cast-text">CARICAMENTO...</div>
+        <div id="cast-bar-fill"></div>
+    </div>
+
+    <div id="action-bar">
+        <div id="slot-q" class="action-slot slot-q">
+            <div class="key-label" id="lbl-switch">Q</div>
+            <div class="spell-icon">⚔️</div>
+            <div class="cooldown-overlay" id="whirlwind-cd"></div>
+        </div>
+        <div id="slot-e" class="action-slot slot-e">
+            <div class="key-label" id="lbl-bow">E</div>
+            <div class="spell-icon">🏹</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-1" class="action-slot slot-1 active">
+            <div class="key-label" id="lbl-spell1">1</div>
+            <div class="spell-icon">🔹</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-2" class="action-slot slot-2">
+            <div class="key-label" id="lbl-spell2">2</div>
+            <div class="spell-icon">💨</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-3" class="action-slot slot-3">
+            <div class="key-label" id="lbl-spell3">3</div>
+            <div class="spell-icon">🔥</div>
+            <div class="cooldown-overlay"></div>
+        </div>
+        <div id="slot-4" class="action-slot slot-4">
+            <div class="key-label" id="lbl-spell4">4</div>
+            <div class="spell-icon">⛰️</div>
+            <div class="cooldown-overlay" id="spikes-cd"></div>
+        </div>
+        <div id="slot-r" class="action-slot slot-r">
+            <div class="key-label" id="lbl-heal">R</div>
+            <div class="spell-icon">✚</div>
+            <div class="cooldown-overlay" id="heal-cd"></div>
+        </div>
+        <div id="slot-g" class="action-slot slot-g">
+            <div class="key-label" id="lbl-heal-other">G</div>
+            <div class="spell-icon">++</div>
+            <div class="cooldown-overlay" id="heal-other-cd"></div>
+        </div>
+        <div class="separator"></div>
+        <div id="slot-5" class="action-slot" onclick="window.performConversion(1)">
+            <div class="key-label" id="lbl-conv1">5</div>
+            <div class="spell-icon"><span class="conv-icon plus-red">+♥</span><span
+                    class="conv-icon minus-yellow">-⚡</span></div>
+            <div class="cooldown-overlay" id="conv1-cd"></div>
+        </div>
+        <div id="slot-6" class="action-slot" onclick="window.performConversion(2)">
+            <div class="key-label" id="lbl-conv2">6</div>
+            <div class="spell-icon"><span class="conv-icon plus-blue">+💧</span><span
+                    class="conv-icon minus-red">-♥</span></div>
+            <div class="cooldown-overlay" id="conv2-cd"></div>
+        </div>
+        <div id="slot-7" class="action-slot" onclick="window.performConversion(3)">
+            <div class="key-label" id="lbl-conv3">7</div>
+            <div class="spell-icon"><span class="conv-icon plus-yellow">+⚡</span><span
+                    class="conv-icon minus-blue">-💧</span></div>
+            <div class="cooldown-overlay" id="conv3-cd"></div>
+        </div>
+    </div>
+
+    <div id="ui-container">
+        <div class="bar-container">
+            <div id="hp-bar" class="bar"></div><span class="label">HP</span><span class="stat-value"
+                id="hp-value">100/100</span>
+        </div>
+        <div class="bar-container">
+            <div id="mana-bar" class="bar"></div><span class="label">MANA</span><span class="stat-value"
+                id="mana-value">100/100</span>
+        </div>
+        <div class="bar-container">
+            <div id="stamina-bar" class="bar"></div><span class="label" style="color:#ffffaa">STAMINA</span><span
+                class="stat-value" id="stamina-value">100/100</span>
+        </div>
+        <div style="margin-top:5px; font-size:12px; color:#aaa; text-align:center;">
+            <span id="weapon-mode-text" style="color:cyan">RANGED</span>
+            <span id="block-text" style="color:#ffd700; display:none; margin-left:10px;">🛡️ PARRY</span>
+        </div>
+    </div>
+
+    <!-- CHAT MOVIBILE -->
+    <div id="chat-container">
+        <div id="chat-header">💬 CHAT <button id="chat-close-btn"
+                style="float:right;background:transparent;border:none;color:#ff0000;font-weight:900;cursor:pointer;font-size:16px;">×</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Press ENTER to chat..." maxlength="100">
+        </div>
+    </div>
+
+    <div id="message"></div>
+    <div id="log"></div>
+
+    <!-- MAIN MENU -->
+    <div id="main-menu">
+        <div id="menu-tips">
+            <h2>📜 TIPS</h2>
+            <ul>
+                <li><strong>ALT</strong> toggles mouse mode</li>
+                <li>Double-tap <strong>Melee</strong> for Whirlwind</li>
+                <li>Mouse sensitivity in <strong>Key Bindings</strong></li>
+                <li>Press <strong>TAB</strong> to open the scoreboard</li>
+                <li>The game UI is fully draggable</li>
+                <li><strong>CTRL+Mouse Wheel</strong> to resize UI</li>
+            </ul>
+        </div>
+        <div class="menu-content">
+            <img id="game-logo" src="./IMG/logo.webp" alt="RageQuit" class="logo">
+
+            <div class="menu-buttons-container">
+                <div class="extra-btn-wrapper">
+                    <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
+                    <button id="team-btn" class="extra-btn">MULTIPLAYER</button>
+                </div>
+                <div class="extra-btn-wrapper">
+                    <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
+                    <button id="menu-keybinds-btn" class="extra-btn">KEY BINDINGS</button>
+                </div>
+                <div class="extra-btn-wrapper">
+                    <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
+                    <button id="menu-audio-btn" class="extra-btn">AUDIO</button>
+                </div>
+                <div class="extra-btn-wrapper">
+                    <img src="./IMG/tasto.webp" alt="" class="btn-metal-bg">
+                    <button id="menu-exit-btn" class="extra-btn">EXIT</button>
+                </div>
+            </div>
+
+            <div class="username-input">
+                <img src="./IMG/osso.webp" alt="" class="name-bone-bg">
+                <input type="text" id="username-input" placeholder="NAME" maxlength="12">
+            </div>
+        </div>
+    </div>
+
+    <!-- TEAM SELECTION -->
+    <div id="team-selection-screen" style="display:none;">
+        <div class="team-grid">
+            <div class="team-option" data-team="red">
+                <div class="team-bg red-bg"></div>
+                <h2>BLOODMAW</h2>
+                <div class="team-icon">🔴</div>
+                <div class="team-player-count" id="team-count-red">0 players</div>
+            </div>
+            <div class="team-option" data-team="black">
+                <div class="team-bg black-bg"></div>
+                <h2>FROSTBITE</h2>
+                <div class="team-icon">🔵</div>
+                <div class="team-player-count" id="team-count-black">0 players</div>
+            </div>
+            <div class="team-option" data-team="green">
+                <div class="team-bg green-bg"></div>
+                <h2>ROTWOOD</h2>
+                <div class="team-icon">🟢</div>
+                <div class="team-player-count" id="team-count-green">0 players</div>
+            </div>
+            <div class="team-option" data-team="purple">
+                <div class="team-bg purple-bg"></div>
+                <h2>VOIDSCAR</h2>
+                <div class="team-icon">🟣</div>
+                <div class="team-player-count" id="team-count-purple">0 players</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCOREBOARD -->
+    <div id="scoreboard" style="display: none;">
+        <h1>🏆 SCOREBOARD</h1>
+        <div id="scoreboard-teams">
+            <!-- Team columns will be injected here -->
+        </div>
+    </div>
+
+    <div id="keybinds-panel">
+        <h2>⌨️ KEY BINDINGS</h2>
+        <div id="keybinds-content"></div>
+        <button id="close-keybinds">CLOSE</button>
+    </div>
+
+    <!-- TOOLTIP CONTAINER -->
+    <div id="spell-tooltip" class="spell-tooltip" style="display:none;"></div>
+
+    <!-- Carica THREE.js e Socket.IO in modo sincrono -->
+    <!-- Carica THREE.js r128 (Versione stabile richiesta) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        console.log('[THREE] Force loaded r128 as requested');
+    </script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <!-- Carica moduli del gioco DOPO THREE.js -->
+    <script src="./js/GLTFLoader.js"></script>
+    <script src="./js/menu.js"></script>
+    <script src="./js/instancing.js"></script>
+    <script src="./js/spells.js"></script>
+    <script src="./js/world.js"></script>
+    <script src="./js/player.js?v=2"></script>
+    <script src="./js/ai.js"></script>
+    <script src="./js/network.js"></script>
+    <script src="./js/game.js"></script>
+
+</body>
+
+</html>
