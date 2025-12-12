@@ -1841,7 +1841,7 @@ function animate() {
 
             // FIX: Physics Sub-stepping to prevent falling through floor on lag/tab switch
             // Instead of one big updatePhysics(0.1), do multiple small steps
-            const FIXED_STEP = 0.016; // 60 Hz physics
+            const FIXED_STEP = 0.033; // 30 Hz physics
             let timeRemaining = delta;
             while (timeRemaining > 0) {
                 const step = Math.min(timeRemaining, FIXED_STEP);

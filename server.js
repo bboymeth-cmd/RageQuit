@@ -9,7 +9,7 @@ const io = new Server(server, {
     pingInterval: 25000
 });
 
-const TICK_RATE = 60;
+const TICK_RATE = 30;
 const TICK_INTERVAL = 1000 / TICK_RATE;
 const path = require('path');
 
@@ -496,7 +496,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- SERVER TICK LOOP (20Hz) ---
+// --- SERVER TICK LOOP (30Hz) ---
 setInterval(() => {
     const playerCount = Object.keys(players).length;
     if (playerCount === 0) return;
