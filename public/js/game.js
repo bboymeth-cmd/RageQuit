@@ -1274,9 +1274,9 @@ function getSpawnPosition() {
 
     if (team) {
         // Spawn nelle zone colorate per le squadre
-        // UPDATE: Tutti respawnano alle coordinate richieste (-7773, 670, -2922)
+        // UPDATE: Tutti respawnano alle coordinate richieste (-7773, 1000, -2922)
         const targetX = -7773;
-        const targetY = 670;
+        const targetY = 1000;
         const targetZ = -2922;
 
         const teamSpawns = {
@@ -1296,7 +1296,7 @@ function getSpawnPosition() {
     }
 
     // Fallback: spawn alle coordinate richieste se squadra non definita
-    return new THREE.Vector3(-7773, 670, -2922);
+    return new THREE.Vector3(-7773, 1000, -2922);
 }
 
 function setupUIEvents() {
