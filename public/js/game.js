@@ -1800,7 +1800,10 @@ function updatePositionBuffer(playerId, position, timestamp) {
     positionBuffer[playerId].push({ pos: position.clone(), time: timestamp });
     // Keep only last 500ms of positions
     const cutoff = Date.now() - 500;
-    positionBuffer[playerId] = positionBuffer[playerId].filter(p => p.time > cutoff);
+    // GC OPTIMIZATION: Use shift() instead of filter() to avoid creating new arrays constantly
+    while (positionBuffer[playerId].length > 0 && positionBuffer[playerId][0].time <= cutoff) {
+        positionBuffer[playerId].shift();
+    }
 }
 
 // Export for network.js and player.js
