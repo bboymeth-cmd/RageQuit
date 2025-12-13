@@ -40,7 +40,7 @@ function initMultiplayer() {
             return;
         }
 
-        socket = io({ reconnection: true, transports: ['websocket', 'polling'] });
+        socket = io({ reconnection: true, transports: ['websocket'] }); // Force WebSocket (No Polling overhead)
         socket.on('connect', () => {
             console.log('TRACE: socket connected. socket.id=', socket.id, 'myId(before)=', myId);
             document.getElementById('connection-status').innerText = "CONNECTED: " + myUsername;

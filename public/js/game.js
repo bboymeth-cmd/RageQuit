@@ -40,7 +40,7 @@ const maxParticles = 100; // Limita particelle attive
 
 // Networking avanzato - Lag compensation
 const positionBuffer = {}; // Buffer posizioni per interpolazione
-const INTERPOLATION_DELAY = 100; // ms di delay per smooth interpolation
+const INTERPOLATION_DELAY = 150; // ms di delay per smooth interpolation (Increased to 150 for stability)
 let serverTime = 0;
 let clientTimeOffset = 0;
 
@@ -280,12 +280,12 @@ const hitboxHelpers = [];
 const SETTINGS = {
     speed: 400.0,
     sprintMulti: 1.4,
-    sprintStaminaCostPerSec: 5.0,
+    sprintStaminaCostPerSec: 4.0,
 
     // JUMP SETTINGS
     jumpForce: 200.0,
     jumpCooldown: 600, // Reduced from 800
-    jumpCost: 10,
+    jumpCost: 5,
     gravity: 600.0, // Reduced from 800
 
     // Missile (Dardo)
@@ -338,7 +338,7 @@ const SETTINGS = {
     conversionCost: 5, conversionGain: 5, conversionCooldown: 1000,
     whirlwindDmg: 30, whirlwindRadius: 25, whirlwindCost: 10, whirlwindCooldown: 4000, // Raddoppiato da 2000 a 4000ms
     spikesCooldown: 3000,
-    blockStaminaCost: 0.4, // 0.4 * 10 = 4 stamina/sec
+    blockStaminaCost: 0.3, // 0.3 * 10 = 3 stamina/sec
     blockMitigation: 0.7,
     hpRegen: 0.5 // New HP Regen setting
 };
@@ -1752,8 +1752,8 @@ function setupControls() {
 
             // Check implicit defaults or bindings
             if (code === KEYBINDS.BLOCK) {
-                // CUSTOM FIX: Prevent blocking/switching to melee if AIMING BOW
-                if (window.isBowAiming) return;
+                // CUSTOM FIX: Prevent blocking/switching to melee if AIMING BOW or CASTING SPELL
+                if (window.isBowAiming || castingState.active) return;
 
                 if (weaponMode === 'ranged' || weaponMode === 'bow') {
                     weaponMode = 'melee'; toggleWeapon(true);
@@ -2030,7 +2030,7 @@ function animate() {
                 const distSq = light.getWorldPosition(new THREE.Vector3()).distanceToSquared(playerPos);
 
                 if (i === 0 && frameCount % 600 === 0) {
-                    console.log(`[CULL DEBUG] Player: ${Math.round(playerPos.x)},${Math.round(playerPos.z)} | Light0 Dist: ${Math.sqrt(distSq).toFixed(0)} | Limit: ${cullDist}`);
+                    // console.log(`[CULL DEBUG] Player: ${Math.round(playerPos.x)},${Math.round(playerPos.z)} | Light0 Dist: ${Math.sqrt(distSq).toFixed(0)} | Limit: ${cullDist}`);
                 }
 
                 light.visible = distSq < cullDistSq;
