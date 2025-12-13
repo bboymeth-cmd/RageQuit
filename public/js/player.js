@@ -2615,6 +2615,10 @@ function loadEnemyKnightModel(playerObj) {
 
                 // FIX: Disabilita frustum culling per evitare scomparsa quando vicino alla camera
                 child.frustumCulled = false;
+
+                // SHADOW OPTIMIZATION: Enable Shadows for Enemy Players
+                child.castShadow = true;
+                child.receiveShadow = true;
             }
         });
 
@@ -2812,6 +2816,9 @@ function loadEnemyKnightModel(playerObj) {
                         child.material.metalness = 0.5;
                         child.material.roughness = 0.5;
                         child.frustumCulled = false;
+                        // SHADOWS FOR ARCHER
+                        child.castShadow = true;
+                        child.receiveShadow = true;
                     }
                 });
 

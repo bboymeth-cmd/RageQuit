@@ -1049,7 +1049,11 @@ function init() {
     moonLight.shadow.mapSize.height = 4096;
 
     // Frustum Size: Must cover the playable area (~3000-5000 units around center)
-    const d = 4000; // Increased to cover larger centered area
+    // Frustum Size: Reduced to 1500 (3000u width) because Light now FOLLOWS PLAYER
+    // This increases shadow resolution by ~3x (condensing 4096px into smaller area)
+    // Frustum Size: Reduced to 1000 (2000u width) for ULTRA HIGH RES SHADOWS
+    // 4096px / 2000u = ~2 pixels per unit. Very Sharp.
+    const d = 1000;
     moonLight.shadow.camera.left = -d;
     moonLight.shadow.camera.right = d;
     moonLight.shadow.camera.top = d;
@@ -1059,9 +1063,10 @@ function init() {
     moonLight.shadow.camera.far = 10000; // Increased far plane for shadows
 
     // FIX: Shadow Artifacts ("Lines/Acne")
-    // Increased further per user request
-    moonLight.shadow.bias = -0.002;
-    moonLight.shadow.normalBias = 0.2;
+    // ULTRA-TIGHT BIAS for grounded shadows (Acne handled by BackSide in world.js)
+    moonLight.shadow.bias = -0.0001; // Back to Perfect Contact
+    moonLight.shadow.normalBias = 0.02; // Minimal offset
+    moonLight.shadow.radius = 3; // Slight blur, but keeping it tight
 
     scene.add(moonLight);
     moonLight.shadow.normalBias = 0.2;
@@ -2036,8 +2041,17 @@ function animate() {
                 light.visible = distSq < cullDistSq;
             }
 
-            // 2. OBJECT CULLING (Buildings)
-            // Use a larger distance for buildings (e.g. 2500)
+            // 2. MAKE MOON LIGHT FOLLOW PLAYER (High Res Shadows everywhere)
+            // Keep relative offset to maintain consistent shadow angle
+            if (window.moonLight && playerMesh) {
+                const offset = new THREE.Vector3(2000, 1200, 2000); // Same as init
+                window.moonLight.position.copy(playerPos).add(offset);
+                window.moonLight.target.position.copy(playerPos);
+                // Important: Update Matrix for target to take effect
+                // window.moonLight.target.updateMatrixWorld(); // usually auto update
+            }
+
+            // 3. OBJECT CULLING (Buildings)
             if (window.mapBuildings) {
                 const buildCullDistSq = 2500 * 2500;
                 for (let i = 0; i < window.mapBuildings.length; i++) {

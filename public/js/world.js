@@ -42,6 +42,8 @@ function createTeamMap() {
                 // OPTIMIZATION: Configura la mesh visibile
                 child.castShadow = true;
                 child.receiveShadow = true;
+                // ACNE FIX: Render shadows from back-faces (Prevents floor stripes with low bias)
+                if (child.material) child.material.shadowSide = THREE.BackSide;
 
                 // LIGHTING: Add Lanterns/Torches to Buildings
                 // DISABLED PER USER REQUEST (Performance Optimization)
