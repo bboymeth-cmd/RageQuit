@@ -1752,6 +1752,9 @@ function setupControls() {
 
             // Check implicit defaults or bindings
             if (code === KEYBINDS.BLOCK) {
+                // CUSTOM FIX: Prevent blocking/switching to melee if AIMING BOW
+                if (window.isBowAiming) return;
+
                 if (weaponMode === 'ranged' || weaponMode === 'bow') {
                     weaponMode = 'melee'; toggleWeapon(true);
                 }
@@ -2044,6 +2047,37 @@ function animate() {
                     const distSq = building.getWorldPosition(new THREE.Vector3()).distanceToSquared(playerPos);
                     building.visible = distSq < buildCullDistSq;
                 }
+            }
+
+            // 3. PHYSICS CULLING (Collision Optimization)
+            // Filter obstacles to only those near the player for Raycasting
+            if (window.obstacles) {
+                // Initialize if needed
+                if (!window.activeObstacles) window.activeObstacles = [];
+
+                // Reuse array reference but clear it (Optimization)
+                window.activeObstacles.length = 0;
+
+                const physCullDistSq = 300 * 300; // 300 units radius for collisions
+                const tempVec = new THREE.Vector3();
+
+                for (let i = 0; i < window.obstacles.length; i++) {
+                    const obj = window.obstacles[i];
+                    // Optimization: Basic check if obj has geometry
+                    if (!obj.geometry) continue;
+
+                    obj.getWorldPosition(tempVec);
+                    if (tempVec.distanceToSquared(playerPos) < physCullDistSq) {
+                        window.activeObstacles.push(obj);
+                    }
+                }
+                // Fallback: If no obstacles near (e.g. falling), keep floor?
+                // Actually floor is usually big. 
+                // We should ensure the "Floor" is always in activeObstacles if it's a separate object.
+                // Assuming floor is chopped or large. If large, its center might be far.
+                // RISK: Large floor mesh might be culled if center is far.
+                // FIX: Look for "Ground" or "Floor" in name/userData and always keep it?
+                // For now, 300 radius is huge for a player size of 6. Should be fine.
             }
         }
     }

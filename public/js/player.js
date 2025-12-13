@@ -2310,7 +2310,7 @@ function updatePhysics(delta) {
                     .add(widthOffsetVec);
 
                 const horizRaycaster = new THREE.Raycaster(probeOrigin, moveDir, 0, 5);
-                const horizHits = horizRaycaster.intersectObjects(obstacles, false);
+                const horizHits = horizRaycaster.intersectObjects(window.activeObstacles || obstacles, false);
 
                 if (horizHits.length > 0) {
                     const hit = horizHits[0];
@@ -2350,7 +2350,7 @@ function updatePhysics(delta) {
         const probeDist = Math.abs(projectedMoveY) + 6.0; // Distance + Height offset relative to feet
 
         const ccdRaycaster = new THREE.Raycaster(probeOrigin, probeDown, 0, probeDist);
-        const ccdHits = ccdRaycaster.intersectObjects(obstacles, false);
+        const ccdHits = ccdRaycaster.intersectObjects(window.activeObstacles || obstacles, false);
 
         if (ccdHits.length > 0) {
             const hit = ccdHits[0];
@@ -2388,7 +2388,7 @@ function updatePhysics(delta) {
     const rayOrigin = playerMesh.position.clone().add(new THREE.Vector3(0, 5, 0));
     const rayDown = new THREE.Vector3(0, -1, 0);
     const gravityRaycaster = new THREE.Raycaster(rayOrigin, rayDown, 0, 20);
-    const groundHits = gravityRaycaster.intersectObjects(obstacles, false);
+    const groundHits = gravityRaycaster.intersectObjects(window.activeObstacles || obstacles, false);
 
     for (let i = 0; i < groundHits.length; i++) {
         const splitHit = groundHits[i];
