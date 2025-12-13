@@ -80,7 +80,7 @@ io.on('connection', (socket) => {
         // Reset completo del player (rimuove flag isDead)
         if (players[socket.id]) delete players[socket.id];
 
-        if (Object.keys(players).length >= 10) {
+        if (Object.keys(players).length >= 30) {
             socket.emit('serverMsg', 'Server pieno!');
             return;
         }
@@ -92,7 +92,7 @@ io.on('connection', (socket) => {
             username: userData.username || "Guerriero",
             hp: 200,
             maxHp: 200,
-            position: { x: 0, y: 6, z: 0 },
+            position: { x: -7773, y: 1000, z: -2922 },
             rotation: { x: 0, y: 0, z: 0 },
             animState: 'idle',
             weaponMode: 'ranged',

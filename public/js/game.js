@@ -1045,8 +1045,8 @@ function init() {
     moonLight.castShadow = true;
 
     // SHADOW CONFIGURATION (High Quality)
-    moonLight.shadow.mapSize.width = 4096; // RESTORED 4096 to fix Flickering/Precision
-    moonLight.shadow.mapSize.height = 4096;
+    moonLight.shadow.mapSize.width = 2048; // Reduced to 2K (Full HD equivalent) per user request
+    moonLight.shadow.mapSize.height = 2048;
 
     // Frustum Size: Must cover the playable area (~3000-5000 units around center)
     // Frustum Size: Reduced to 1500 (3000u width) because Light now FOLLOWS PLAYER
@@ -1743,9 +1743,11 @@ function setupControls() {
 
             // Fix Camera Flip: Restrict look-down angle in Melee logic
             // -1.57 is full down. -1.0 is about 60 degrees down.
+            // CUSTOM FIX: Restrict LOOK UP angle (Max Pitch) to prevent looking under floor in Melee
             const minPitch = (weaponMode === 'melee' || isBlocking) ? -1.0 : -1.55;
+            const maxPitch = (weaponMode === 'melee' || isBlocking) ? 0.81 : 1.55; // Increased to 0.81 rad per safe limit
 
-            euler.x = Math.max(minPitch, Math.min(1.55, euler.x));
+            euler.x = Math.max(minPitch, Math.min(maxPitch, euler.x));
             playerMesh.rotation.y = euler.y;
         }
     });
